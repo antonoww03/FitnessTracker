@@ -317,6 +317,46 @@ class FitTrackAPITester:
                 print(f"   ❌ Missing coach response fields: {set(expected_fields) - set(response.keys())}")
         return False
 
+    def test_export_csv_week(self):
+        """Test GET /api/export?format=csv&period=week&date=YYYY-MM-DD returns valid CSV"""
+        success, response = self.run_test("Export CSV Week", "GET", "export", 200, params={"format": "csv", "period": "week", "date": "2026-04-05"})
+        if success:
+            print(f"   ✅ CSV export successful")
+            return True
+        return False
+
+    def test_export_pdf_week(self):
+        """Test GET /api/export?format=pdf&period=week&date=YYYY-MM-DD returns valid PDF"""
+        success, response = self.run_test("Export PDF Week", "GET", "export", 200, params={"format": "pdf", "period": "week", "date": "2026-04-05"})
+        if success:
+            print(f"   ✅ PDF export successful")
+            return True
+        return False
+
+    def test_export_csv_month(self):
+        """Test GET /api/export?format=csv&period=month&date=YYYY-MM-DD returns valid CSV"""
+        success, response = self.run_test("Export CSV Month", "GET", "export", 200, params={"format": "csv", "period": "month", "date": "2026-04-05"})
+        if success:
+            print(f"   ✅ CSV monthly export successful")
+            return True
+        return False
+
+    def test_export_csv_year(self):
+        """Test GET /api/export?format=csv&period=year&date=YYYY-MM-DD returns valid CSV"""
+        success, response = self.run_test("Export CSV Year", "GET", "export", 200, params={"format": "csv", "period": "year", "date": "2026-04-05"})
+        if success:
+            print(f"   ✅ CSV yearly export successful")
+            return True
+        return False
+
+    def test_export_invalid_format(self):
+        """Test GET /api/export?format=invalid returns 400 error"""
+        success, response = self.run_test("Export Invalid Format", "GET", "export", 400, params={"format": "invalid", "period": "week", "date": "2026-04-05"})
+        if success:
+            print(f"   ✅ Invalid format correctly returns 400 error")
+            return True
+        return False
+
 def main():
     print("🚀 Starting FitTrack API Tests (Updated for Water, Weight & Reports)")
     print("=" * 60)
@@ -365,6 +405,13 @@ def main():
     
     # Test NEW AI coach functionality
     tester.test_coach_tips()
+    
+    # Test NEW export functionality
+    tester.test_export_csv_week()
+    tester.test_export_pdf_week()
+    tester.test_export_csv_month()
+    tester.test_export_csv_year()
+    tester.test_export_invalid_format()
     
     # Test summary endpoint (now includes water and weight)
     tester.test_get_summary()

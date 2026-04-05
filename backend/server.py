@@ -1,10 +1,13 @@
 from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import json
+import csv
+import io
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List
@@ -403,6 +406,97 @@ async def get_reports(period: str, date: str):
             })
 
     return reports
+
+@api_router.get("/export")
+async def export_data(format: str, period: str, date: str):
+    reports = await get_reports(period, date)
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Date", "Calories (kcal)", "Protein (g)", "Fat (g)", "Carbs (g)", "Sugar (g)", "Fiber (g)", "Water (ml)", "Weight (kg)", "Training (min)"])
+        for r in reports:
+            writer.writerow([
+                r["date"],
+                round(r["totals"]["calories"]),
+                round(r["totals"]["protein"]),
+                round(r["totals"]["fat"]),
+                round(r["totals"]["carbs"]),
+                round(r["totals"]["sugar"]),
+                round(r["totals"]["fiber"]),
+                r.get("water_ml", 0),
+                r.get("weight_kg", "") if r.get("weight_kg") else "",
+                r.get("training_minutes", 0),
+            ])
+        output.seek(0)
+        filename = f"fittrack_{period}_{date}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    elif format == "pdf":
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors as rl_colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=40, bottomMargin=30)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=18, textColor=rl_colors.HexColor('#007AFF'))
+        elements.append(Paragraph(f"FitTrack Report &mdash; {period.capitalize()}", title_style))
+        elements.append(Spacer(1, 6))
+        elements.append(Paragraph(f"Generated for: {date}", styles['Normal']))
+        elements.append(Spacer(1, 16))
+
+        headers = ["Date", "Cal", "Protein", "Fat", "Carbs", "Sugar", "Fiber", "Water", "Weight", "Training"]
+        data = [headers]
+        for r in reports:
+            data.append([
+                r["date"],
+                str(round(r["totals"]["calories"])),
+                str(round(r["totals"]["protein"])) + "g",
+                str(round(r["totals"]["fat"])) + "g",
+                str(round(r["totals"]["carbs"])) + "g",
+                str(round(r["totals"]["sugar"])) + "g",
+                str(round(r["totals"]["fiber"])) + "g",
+                str(r.get("water_ml", 0)) + "ml",
+                str(r["weight_kg"]) + "kg" if r.get("weight_kg") else "-",
+                str(r.get("training_minutes", 0)) + "min",
+            ])
+
+        table = Table(data, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#007AFF')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#CCCCCC')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor('#F5F5F5')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(table)
+        doc.build(elements)
+
+        buffer.seek(0)
+        filename = f"fittrack_{period}_{date}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    raise HTTPException(status_code=400, detail="Format must be 'csv' or 'pdf'")
 
 # --- Water Streak ---
 

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, Droplet, Scale, Dumbbell, Flame } from "lucide-react";
+import { ChevronDown, ChevronUp, Droplet, Scale, Dumbbell, Flame, Download, FileText } from "lucide-react";
+import { Button } from "../components/ui/button";
+import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -123,6 +125,7 @@ export const Reports = ({ selectedDate }) => {
   const [period, setPeriod] = useState("week");
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(null);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -140,27 +143,83 @@ export const Reports = ({ selectedDate }) => {
     fetchReports();
   }, [fetchReports]);
 
+  const handleExport = async (format) => {
+    setExporting(format);
+    try {
+      const response = await axios.get(`${API}/export`, {
+        params: { format, period, date: selectedDate },
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], {
+        type: format === 'csv' ? 'text/csv' : 'application/pdf'
+      });
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `fittrack_${period}_${selectedDate}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`${format.toUpperCase()} exported successfully!`);
+    } catch (err) {
+      console.error(`Failed to export ${format}:`, err);
+      toast.error(`Failed to export ${format.toUpperCase()}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div data-testid="reports-section">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h2 className="font-heading text-xl uppercase tracking-widest font-bold text-white">
           Reports
         </h2>
-        <div className="flex gap-1 bg-[#141414] rounded-md p-1 border border-[#2A2A2A]">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`px-3 py-1 rounded-md text-xs font-heading uppercase tracking-wider transition-all duration-200 ${
-                period === p.key
-                  ? "bg-[#007AFF] text-white"
-                  : "text-[#A0A0A0] hover:text-white"
-              }`}
-              data-testid={`period-${p.key}`}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-[#141414] rounded-md p-1 border border-[#2A2A2A]">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`px-3 py-1 rounded-md text-xs font-heading uppercase tracking-wider transition-all duration-200 ${
+                  period === p.key
+                    ? "bg-[#007AFF] text-white"
+                    : "text-[#A0A0A0] hover:text-white"
+                }`}
+                data-testid={`period-${p.key}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExport("csv")}
+              disabled={exporting === "csv" || reports.length === 0}
+              className="h-7 px-2.5 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A] text-xs font-body gap-1"
+              data-testid="export-csv-button"
             >
-              {p.label}
-            </button>
-          ))}
+              <Download className="h-3 w-3" />
+              CSV
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExport("pdf")}
+              disabled={exporting === "pdf" || reports.length === 0}
+              className="h-7 px-2.5 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A] text-xs font-body gap-1"
+              data-testid="export-pdf-button"
+            >
+              <FileText className="h-3 w-3" />
+              PDF
+            </Button>
+          </div>
         </div>
       </div>
 

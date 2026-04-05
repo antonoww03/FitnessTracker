@@ -31,6 +31,16 @@ Build a personal use website to track training (type + duration), calories (inpu
 - All 11 backend endpoints tested and passing
 - Frontend fully functional
 
+### Update (2026-02-18 - Iteration 2)
+- Weight tracker (daily body weight with upsert - one entry per day)
+- Water intake tracker with SVG bottle visualization (3L capacity, light-medium blue)
+- Quick-add water buttons (250ml, 500ml, 1L) + custom input
+- Reports tab with Week/Month/Year period views
+- Expandable report rows showing full macro breakdown, water, weight, training
+- Updated summary endpoint with water and weight data
+- All 21 backend endpoints tested and passing (100%)
+- Frontend 100% operational
+
 ## Prioritized Backlog
 - P1: Weekly/monthly summary charts (recharts)
 - P1: Export data (CSV/PDF)

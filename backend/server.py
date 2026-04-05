@@ -80,6 +80,26 @@ class DailyGoals(BaseModel):
     sugar: float = 50
     fiber: float = 30
 
+class WeightLog(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    weight_kg: float
+    date: str
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class WeightLogCreate(BaseModel):
+    weight_kg: float
+    date: str
+
+class WaterLog(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    amount_ml: float
+    date: str
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class WaterLogCreate(BaseModel):
+    amount_ml: float
+    date: str
+
 # --- AI Food Analysis ---
 
 @api_router.post("/food/analyze", response_model=FoodAnalysis)
@@ -184,12 +204,60 @@ async def update_goals(goals: DailyGoals):
     await db.daily_goals.update_one({}, {"$set": doc}, upsert=True)
     return goals
 
+# --- Weight ---
+
+@api_router.post("/weight", response_model=WeightLog)
+async def log_weight(weight: WeightLogCreate):
+    existing = await db.weight_logs.find_one({"date": weight.date}, {"_id": 0})
+    if existing:
+        await db.weight_logs.update_one(
+            {"date": weight.date},
+            {"$set": {"weight_kg": weight.weight_kg, "timestamp": datetime.now(timezone.utc).isoformat()}}
+        )
+        updated = await db.weight_logs.find_one({"date": weight.date}, {"_id": 0})
+        return WeightLog(**updated)
+    weight_log = WeightLog(**weight.model_dump())
+    doc = weight_log.model_dump()
+    await db.weight_logs.insert_one(doc)
+    return weight_log
+
+@api_router.get("/weight")
+async def get_weight(date: str = None):
+    if date:
+        weight = await db.weight_logs.find_one({"date": date}, {"_id": 0})
+        return weight
+    weights = await db.weight_logs.find({}, {"_id": 0}).sort("date", -1).to_list(1)
+    return weights[0] if weights else None
+
+# --- Water ---
+
+@api_router.post("/water", response_model=WaterLog)
+async def log_water(water: WaterLogCreate):
+    water_log = WaterLog(**water.model_dump())
+    doc = water_log.model_dump()
+    await db.water_logs.insert_one(doc)
+    return water_log
+
+@api_router.get("/water", response_model=List[WaterLog])
+async def get_water_logs(date: str):
+    logs = await db.water_logs.find({"date": date}, {"_id": 0}).to_list(1000)
+    return logs
+
+@api_router.delete("/water/{water_id}")
+async def delete_water_log(water_id: str):
+    result = await db.water_logs.delete_one({"id": water_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Water log not found")
+    return {"message": "Deleted"}
+
 # --- Summary ---
 
 @api_router.get("/summary")
 async def get_summary(date: str):
     food_logs = await db.food_logs.find({"date": date}, {"_id": 0}).to_list(1000)
     training_logs = await db.training_logs.find({"date": date}, {"_id": 0}).to_list(1000)
+    water_logs = await db.water_logs.find({"date": date}, {"_id": 0}).to_list(1000)
+    weight_doc = await db.weight_logs.find_one({"date": date}, {"_id": 0})
     goals_doc = await db.daily_goals.find_one({}, {"_id": 0})
     goals = goals_doc if goals_doc else DailyGoals().model_dump()
 
@@ -203,15 +271,138 @@ async def get_summary(date: str):
     }
 
     total_training_minutes = sum(t.get("duration_minutes", 0) for t in training_logs)
+    total_water_ml = round(sum(w.get("amount_ml", 0) for w in water_logs))
 
     return {
         "date": date,
         "totals": totals,
         "goals": goals,
         "total_training_minutes": total_training_minutes,
+        "total_water_ml": total_water_ml,
+        "weight_kg": weight_doc.get("weight_kg") if weight_doc else None,
         "food_count": len(food_logs),
         "training_count": len(training_logs),
     }
+
+# --- Reports ---
+
+@api_router.get("/reports")
+async def get_reports(period: str, date: str):
+    import calendar as cal_module
+    from datetime import timedelta
+    from collections import defaultdict
+
+    target = datetime.strptime(date, "%Y-%m-%d")
+
+    if period == "week":
+        start = target - timedelta(days=target.weekday())
+        end = start + timedelta(days=6)
+    elif period == "month":
+        start = target.replace(day=1)
+        _, last_day = cal_module.monthrange(target.year, target.month)
+        end = target.replace(day=last_day)
+    elif period == "year":
+        start = target.replace(month=1, day=1)
+        end = target.replace(month=12, day=31)
+    else:
+        start = target
+        end = target
+
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
+
+    food_logs = await db.food_logs.find({"date": {"$gte": start_str, "$lte": end_str}}, {"_id": 0}).to_list(10000)
+    water_logs = await db.water_logs.find({"date": {"$gte": start_str, "$lte": end_str}}, {"_id": 0}).to_list(10000)
+    training_logs = await db.training_logs.find({"date": {"$gte": start_str, "$lte": end_str}}, {"_id": 0}).to_list(10000)
+    weight_logs = await db.weight_logs.find({"date": {"$gte": start_str, "$lte": end_str}}, {"_id": 0}).to_list(10000)
+
+    food_by_date = defaultdict(list)
+    water_by_date = defaultdict(list)
+    training_by_date = defaultdict(list)
+    weight_by_date = {}
+
+    for f in food_logs:
+        food_by_date[f["date"]].append(f)
+    for w in water_logs:
+        water_by_date[w["date"]].append(w)
+    for t in training_logs:
+        training_by_date[t["date"]].append(t)
+    for w in weight_logs:
+        weight_by_date[w["date"]] = w.get("weight_kg")
+
+    all_dates = set()
+    current = start
+    while current <= end:
+        all_dates.add(current.strftime("%Y-%m-%d"))
+        current += timedelta(days=1)
+
+    reports = []
+    for d in sorted(all_dates):
+        foods = food_by_date.get(d, [])
+        waters = water_by_date.get(d, [])
+        trains = training_by_date.get(d, [])
+        weight = weight_by_date.get(d)
+
+        has_data = foods or waters or trains or weight is not None
+        if not has_data:
+            continue
+
+        day_totals = {
+            "calories": round(sum(f.get("calories", 0) for f in foods), 1),
+            "protein": round(sum(f.get("protein", 0) for f in foods), 1),
+            "fat": round(sum(f.get("fat", 0) for f in foods), 1),
+            "carbs": round(sum(f.get("carbs", 0) for f in foods), 1),
+            "sugar": round(sum(f.get("sugar", 0) for f in foods), 1),
+            "fiber": round(sum(f.get("fiber", 0) for f in foods), 1),
+        }
+
+        reports.append({
+            "date": d,
+            "totals": day_totals,
+            "water_ml": round(sum(w.get("amount_ml", 0) for w in waters)),
+            "weight_kg": weight,
+            "training_minutes": sum(t.get("duration_minutes", 0) for t in trains),
+            "food_count": len(foods),
+            "training_count": len(trains),
+        })
+
+    if period == "year":
+        monthly = defaultdict(lambda: {
+            "totals": {"calories": 0, "protein": 0, "fat": 0, "carbs": 0, "sugar": 0, "fiber": 0},
+            "water_ml": 0, "training_minutes": 0, "food_count": 0, "training_count": 0,
+            "weights": [], "days_count": 0
+        })
+        for r in reports:
+            month_key = r["date"][:7]
+            m = monthly[month_key]
+            for k in ["calories", "protein", "fat", "carbs", "sugar", "fiber"]:
+                m["totals"][k] += r["totals"][k]
+            m["water_ml"] += r["water_ml"]
+            m["training_minutes"] += r["training_minutes"]
+            m["food_count"] += r["food_count"]
+            m["training_count"] += r["training_count"]
+            if r["weight_kg"] is not None:
+                m["weights"].append(r["weight_kg"])
+            m["days_count"] += 1
+
+        reports = []
+        for month_key in sorted(monthly.keys()):
+            m = monthly[month_key]
+            avg_weight = round(sum(m["weights"]) / len(m["weights"]), 1) if m["weights"] else None
+            days = m["days_count"]
+            reports.append({
+                "date": month_key,
+                "totals": {k: round(v / days, 1) if days > 0 else 0 for k, v in m["totals"].items()},
+                "water_ml": round(m["water_ml"] / days) if days > 0 else 0,
+                "weight_kg": avg_weight,
+                "training_minutes": m["training_minutes"],
+                "food_count": m["food_count"],
+                "training_count": m["training_count"],
+                "days_count": days,
+                "is_monthly": True,
+            })
+
+    return reports
 
 @api_router.get("/")
 async def root():

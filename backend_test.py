@@ -168,18 +168,124 @@ class FitTrackAPITester:
         """Test GET /api/summary?date=YYYY-MM-DD"""
         success, response = self.run_test("Get Summary", "GET", "summary", 200, params={"date": self.test_date})
         if success:
-            expected_fields = ["date", "totals", "goals", "total_training_minutes", "food_count", "training_count"]
+            expected_fields = ["date", "totals", "goals", "total_training_minutes", "total_water_ml", "weight_kg", "food_count", "training_count"]
             if all(field in response for field in expected_fields):
                 print(f"   ✅ Summary contains all required fields")
                 print(f"   Date: {response.get('date')}, Food count: {response.get('food_count')}, Training count: {response.get('training_count')}")
+                print(f"   Water: {response.get('total_water_ml')}ml, Weight: {response.get('weight_kg')}kg")
                 return True
             else:
                 print(f"   ❌ Missing summary fields: {set(expected_fields) - set(response.keys())}")
         return False
 
+    def test_create_water_log(self):
+        """Test POST /api/water creates water log"""
+        water_data = {
+            "amount_ml": 500,
+            "date": self.test_date
+        }
+        success, response = self.run_test("Create Water Log", "POST", "water", 200, water_data)
+        if success and response.get("id"):
+            print(f"   ✅ Water log created with ID: {response.get('id')}")
+            return response.get("id")
+        return None
+
+    def test_get_water_logs(self):
+        """Test GET /api/water?date=YYYY-MM-DD"""
+        success, response = self.run_test("Get Water Logs", "GET", "water", 200, params={"date": self.test_date})
+        if success and isinstance(response, list):
+            print(f"   ✅ Retrieved {len(response)} water logs")
+            return response
+        return []
+
+    def test_delete_water_log(self, water_id):
+        """Test DELETE /api/water/{id}"""
+        if not water_id:
+            print("❌ No water ID provided for deletion test")
+            return False
+        success, _ = self.run_test("Delete Water Log", "DELETE", f"water/{water_id}", 200)
+        return success
+
+    def test_create_weight_log(self):
+        """Test POST /api/weight creates/updates weight log (upsert)"""
+        weight_data = {
+            "weight_kg": 75.5,
+            "date": self.test_date
+        }
+        success, response = self.run_test("Create Weight Log", "POST", "weight", 200, weight_data)
+        if success and response.get("weight_kg") == 75.5:
+            print(f"   ✅ Weight log created/updated: {response.get('weight_kg')}kg")
+            return True
+        return False
+
+    def test_update_weight_log(self):
+        """Test POST /api/weight updates existing weight (upsert functionality)"""
+        weight_data = {
+            "weight_kg": 76.0,
+            "date": self.test_date
+        }
+        success, response = self.run_test("Update Weight Log (Upsert)", "POST", "weight", 200, weight_data)
+        if success and response.get("weight_kg") == 76.0:
+            print(f"   ✅ Weight log updated via upsert: {response.get('weight_kg')}kg")
+            return True
+        return False
+
+    def test_get_weight_by_date(self):
+        """Test GET /api/weight?date=YYYY-MM-DD"""
+        success, response = self.run_test("Get Weight by Date", "GET", "weight", 200, params={"date": self.test_date})
+        if success and response and "weight_kg" in response:
+            print(f"   ✅ Retrieved weight: {response.get('weight_kg')}kg")
+            return response
+        return None
+
+    def test_get_latest_weight(self):
+        """Test GET /api/weight (no date parameter)"""
+        success, response = self.run_test("Get Latest Weight", "GET", "weight", 200)
+        if success and response and "weight_kg" in response:
+            print(f"   ✅ Retrieved latest weight: {response.get('weight_kg')}kg")
+            return response
+        return None
+
+    def test_reports_week(self):
+        """Test GET /api/reports?period=week&date=YYYY-MM-DD"""
+        success, response = self.run_test("Get Weekly Reports", "GET", "reports", 200, params={"period": "week", "date": self.test_date})
+        if success and isinstance(response, list):
+            print(f"   ✅ Retrieved {len(response)} weekly report entries")
+            if response:
+                sample = response[0]
+                expected_fields = ["date", "totals", "water_ml", "weight_kg", "training_minutes", "food_count", "training_count"]
+                if all(field in sample for field in expected_fields):
+                    print(f"   ✅ Report entries contain all required fields")
+                    return True
+                else:
+                    print(f"   ❌ Missing report fields: {set(expected_fields) - set(sample.keys())}")
+            return True
+        return False
+
+    def test_reports_month(self):
+        """Test GET /api/reports?period=month&date=YYYY-MM-DD"""
+        success, response = self.run_test("Get Monthly Reports", "GET", "reports", 200, params={"period": "month", "date": self.test_date})
+        if success and isinstance(response, list):
+            print(f"   ✅ Retrieved {len(response)} monthly report entries")
+            return True
+        return False
+
+    def test_reports_year(self):
+        """Test GET /api/reports?period=year&date=YYYY-MM-DD"""
+        success, response = self.run_test("Get Yearly Reports", "GET", "reports", 200, params={"period": "year", "date": self.test_date})
+        if success and isinstance(response, list):
+            print(f"   ✅ Retrieved {len(response)} yearly report entries")
+            if response:
+                sample = response[0]
+                if sample.get("is_monthly"):
+                    print(f"   ✅ Yearly reports are properly aggregated by month")
+                    return True
+            return True
+        return False
+
 def main():
-    print("🚀 Starting FitTrack API Tests")
-    print("=" * 50)
+    print("🚀 Starting FitTrack API Tests (Updated for Water, Weight & Reports)")
+    print("=" * 60)
     
     tester = FitTrackAPITester()
     
@@ -203,11 +309,28 @@ def main():
     if food_id:
         tester.test_delete_food_log(food_id)
     
-    # Test summary endpoint
+    # Test NEW water functionality
+    water_id = tester.test_create_water_log()
+    tester.test_get_water_logs()
+    if water_id:
+        tester.test_delete_water_log(water_id)
+    
+    # Test NEW weight functionality (with upsert)
+    tester.test_create_weight_log()
+    tester.test_update_weight_log()  # Test upsert functionality
+    tester.test_get_weight_by_date()
+    tester.test_get_latest_weight()
+    
+    # Test NEW reports functionality
+    tester.test_reports_week()
+    tester.test_reports_month()
+    tester.test_reports_year()
+    
+    # Test summary endpoint (now includes water and weight)
     tester.test_get_summary()
     
     # Print final results
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print(f"📊 Test Results: {tester.tests_passed}/{tester.tests_run} passed")
     success_rate = (tester.tests_passed / tester.tests_run) * 100 if tester.tests_run > 0 else 0
     print(f"📈 Success Rate: {success_rate:.1f}%")

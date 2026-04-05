@@ -41,14 +41,17 @@ Build a personal use website to track training (type + duration), calories (inpu
 - All 21 backend endpoints tested and passing (100%)
 - Frontend 100% operational
 
+### Update (2026-02-18 - Iteration 3)
+- Water consumption streak counter (consecutive days with water logged, flame badge)
+- AI Coach with personalized tips based on STANDARD nutritional guidelines (not custom goals)
+- Coach compares macros vs standard intake, references water vs 3L goal
+- Color-coded tip cards with type-specific icons
+- All 23 backend endpoints passing (100%), frontend 100%
+
 ## Prioritized Backlog
-- P1: Weekly/monthly summary charts (recharts)
-- P1: Export data (CSV/PDF)
-- P2: Training intensity/notes field
-- P2: Meal categories (breakfast, lunch, dinner, snack)
-- P2: Water intake tracking
-- P3: Weight/body measurement tracking
-- P3: Dark/light theme toggle
+- P1: Favorite foods / quick-add meals
+- P2: Weekly trend charts using recharts
+- P2: Data export (CSV/PDF)
 
 ## Next Tasks
 - Add weekly trend charts using recharts

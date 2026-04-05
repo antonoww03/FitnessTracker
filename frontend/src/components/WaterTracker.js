@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Droplet, Plus } from "lucide-react";
+import { Droplet, Plus, Flame } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -89,7 +89,7 @@ const WaterBottle = ({ totalMl, maxMl = 3000 }) => {
   );
 };
 
-export const WaterTracker = ({ selectedDate, totalWaterMl, onWaterLogged }) => {
+export const WaterTracker = ({ selectedDate, totalWaterMl, onWaterLogged, streak = 0 }) => {
   const [customAmount, setCustomAmount] = useState("");
 
   const addWater = async (amountMl) => {
@@ -111,10 +111,18 @@ export const WaterTracker = ({ selectedDate, totalWaterMl, onWaterLogged }) => {
 
   return (
     <div className="ft-card p-5 flex flex-col" data-testid="water-tracker">
-      <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-2">
-        <Droplet className="inline h-4 w-4 text-[#6EC6FF] mr-1.5 -mt-0.5" />
-        Water
-      </h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white">
+          <Droplet className="inline h-4 w-4 text-[#6EC6FF] mr-1.5 -mt-0.5" />
+          Water
+        </h2>
+        {streak > 0 && (
+          <span className="flex items-center gap-1 text-xs font-body font-semibold text-[#FF9F0A]" data-testid="water-streak">
+            <Flame className="h-3 w-3" />
+            {streak}d streak
+          </span>
+        )}
+      </div>
 
       <div className="flex-1 flex flex-col items-center justify-center py-2">
         <WaterBottle totalMl={totalWaterMl} />

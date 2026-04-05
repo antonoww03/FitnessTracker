@@ -11,6 +11,7 @@ import { DailyGoals } from "./components/DailyGoals";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { WaterTracker } from "./components/WaterTracker";
 import { WeightTracker } from "./components/WeightTracker";
+import { CoachTips } from "./components/CoachTips";
 import { Reports } from "./components/Reports";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -44,14 +45,16 @@ function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [totalWaterMl, setTotalWaterMl] = useState(0);
   const [weightKg, setWeightKg] = useState(null);
+  const [waterStreak, setWaterStreak] = useState(0);
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, foodsRes, trainingsRes, waterRes] = await Promise.all([
+      const [summaryRes, foodsRes, trainingsRes, waterRes, streakRes] = await Promise.all([
         axios.get(`${API}/summary?date=${selectedDate}`),
         axios.get(`${API}/food?date=${selectedDate}`),
         axios.get(`${API}/training?date=${selectedDate}`),
         axios.get(`${API}/water?date=${selectedDate}`),
+        axios.get(`${API}/streak/water`),
       ]);
       setTotals(summaryRes.data.totals);
       setGoals(summaryRes.data.goals);
@@ -60,6 +63,7 @@ function App() {
       setWeightKg(summaryRes.data.weight_kg);
       setFoods(foodsRes.data);
       setTrainings(trainingsRes.data);
+      setWaterStreak(streakRes.data.streak || 0);
     } catch (err) {
       console.error("Failed to fetch data:", err);
     }
@@ -139,6 +143,7 @@ function App() {
               selectedDate={selectedDate}
               totalWaterMl={totalWaterMl}
               onWaterLogged={fetchData}
+              streak={waterStreak}
             />
           </div>
 
@@ -153,6 +158,11 @@ function App() {
             <div className="animate-slide-up stagger-5">
               <WeightTracker selectedDate={selectedDate} weightKg={weightKg} onWeightLogged={fetchData} />
             </div>
+          </div>
+
+          {/* AI Coach */}
+          <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-5">
+            <CoachTips selectedDate={selectedDate} />
           </div>
 
           {/* Activity Feed */}

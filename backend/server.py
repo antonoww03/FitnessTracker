@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
@@ -403,6 +403,101 @@ async def get_reports(period: str, date: str):
             })
 
     return reports
+
+# --- Water Streak ---
+
+@api_router.get("/streak/water")
+async def get_water_streak():
+    pipeline = [
+        {"$group": {"_id": "$date"}},
+        {"$sort": {"_id": -1}}
+    ]
+    results = await db.water_logs.aggregate(pipeline).to_list(1000)
+    date_set = {r["_id"] for r in results}
+
+    today = datetime.now(timezone.utc)
+    current = today
+
+    if current.strftime("%Y-%m-%d") not in date_set:
+        current = current - timedelta(days=1)
+
+    streak = 0
+    while current.strftime("%Y-%m-%d") in date_set:
+        streak += 1
+        current = current - timedelta(days=1)
+
+    return {"streak": streak}
+
+# --- AI Coach ---
+
+@api_router.get("/coach/tips")
+async def get_coach_tips(date: str):
+    api_key = os.environ.get('EMERGENT_LLM_KEY')
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM API key not configured")
+
+    food_logs = await db.food_logs.find({"date": date}, {"_id": 0}).to_list(1000)
+    water_logs = await db.water_logs.find({"date": date}, {"_id": 0}).to_list(1000)
+
+    totals = {
+        "calories": round(sum(f.get("calories", 0) for f in food_logs), 1),
+        "protein": round(sum(f.get("protein", 0) for f in food_logs), 1),
+        "fat": round(sum(f.get("fat", 0) for f in food_logs), 1),
+        "carbs": round(sum(f.get("carbs", 0) for f in food_logs), 1),
+        "sugar": round(sum(f.get("sugar", 0) for f in food_logs), 1),
+        "fiber": round(sum(f.get("fiber", 0) for f in food_logs), 1),
+    }
+    water_ml = round(sum(w.get("amount_ml", 0) for w in water_logs))
+
+    prompt = f"""Here's my nutrition intake for today:
+- Calories: {totals['calories']} kcal
+- Protein: {totals['protein']}g
+- Fat: {totals['fat']}g
+- Carbs: {totals['carbs']}g
+- Sugar: {totals['sugar']}g
+- Fiber: {totals['fiber']}g
+- Water: {water_ml}ml (my daily goal is 3000ml)
+
+Based on this data, give me tips on what I need more or less of."""
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=str(uuid.uuid4()),
+        system_message="""You are a friendly, knowledgeable fitness and nutrition coach. Analyze the user's daily intake and give 3-5 concise, actionable tips.
+
+CRITICAL RULES:
+- For calories and macros (protein, fat, carbs, sugar, fiber): Compare their intake against STANDARD recommended daily values for a healthy adult. Standard guidelines: 2000-2500 kcal/day, 50-60g protein minimum (ideally 1.6-2.2g per kg bodyweight for active people), 44-78g fat, 225-325g carbs, less than 25g added sugar, 25-38g fiber.
+- For water: Compare against their 3L (3000ml) daily goal and give specific hydration advice.
+- Tell them specifically what they need MORE or LESS of.
+- Be encouraging and practical. Suggest specific foods when relevant.
+- Keep each tip to 1-2 sentences max.
+- Return ONLY a valid JSON array of objects. Each object has "type" (one of: "calories", "protein", "fat", "carbs", "sugar", "fiber", "water", "general") and "tip" (string text).
+- No markdown, no explanation outside the JSON."""
+    )
+
+    user_message = UserMessage(text=prompt)
+    response = await chat.send_message(user_message)
+
+    try:
+        response_text = response.strip()
+        if response_text.startswith("```"):
+            lines = response_text.split("\n")
+            json_lines = []
+            inside = False
+            for line in lines:
+                if line.startswith("```") and not inside:
+                    inside = True
+                    continue
+                elif line.startswith("```") and inside:
+                    break
+                elif inside:
+                    json_lines.append(line)
+            response_text = "\n".join(json_lines)
+        tips = json.loads(response_text)
+        return {"tips": tips, "totals": totals, "water_ml": water_ml}
+    except Exception as e:
+        logger.error(f"Failed to parse coach response: {response} - Error: {e}")
+        return {"tips": [{"type": "general", "tip": str(response)}], "totals": totals, "water_ml": water_ml}
 
 @api_router.get("/")
 async def root():

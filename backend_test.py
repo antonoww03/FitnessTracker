@@ -283,6 +283,40 @@ class FitTrackAPITester:
             return True
         return False
 
+    def test_water_streak(self):
+        """Test GET /api/streak/water returns water streak count"""
+        success, response = self.run_test("Get Water Streak", "GET", "streak/water", 200)
+        if success and "streak" in response:
+            streak_count = response.get("streak", 0)
+            print(f"   ✅ Water streak retrieved: {streak_count} days")
+            return True
+        return False
+
+    def test_coach_tips(self):
+        """Test GET /api/coach/tips?date=YYYY-MM-DD returns AI coach tips"""
+        success, response = self.run_test("Get Coach Tips", "GET", "coach/tips", 200, params={"date": self.test_date})
+        if success:
+            expected_fields = ["tips", "totals", "water_ml"]
+            if all(field in response for field in expected_fields):
+                tips = response.get("tips", [])
+                print(f"   ✅ Coach tips response contains all required fields")
+                print(f"   Tips count: {len(tips)}")
+                if tips:
+                    # Check tip structure
+                    sample_tip = tips[0]
+                    if "type" in sample_tip and "tip" in sample_tip:
+                        print(f"   ✅ Tips have correct structure (type, tip)")
+                        print(f"   Sample tip type: {sample_tip.get('type')}")
+                        return True
+                    else:
+                        print(f"   ❌ Tips missing required fields (type, tip)")
+                else:
+                    print(f"   ✅ Empty tips array (valid for no data)")
+                    return True
+            else:
+                print(f"   ❌ Missing coach response fields: {set(expected_fields) - set(response.keys())}")
+        return False
+
 def main():
     print("🚀 Starting FitTrack API Tests (Updated for Water, Weight & Reports)")
     print("=" * 60)
@@ -325,6 +359,12 @@ def main():
     tester.test_reports_week()
     tester.test_reports_month()
     tester.test_reports_year()
+    
+    # Test NEW water streak functionality
+    tester.test_water_streak()
+    
+    # Test NEW AI coach functionality
+    tester.test_coach_tips()
     
     # Test summary endpoint (now includes water and weight)
     tester.test_get_summary()

@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { ChevronDown, ChevronUp, Droplet, Scale, Dumbbell, Flame, Download, FileText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -173,6 +174,23 @@ export const Reports = ({ selectedDate }) => {
     }
   };
 
+  const chartData = reports.map((report) => {
+    const isMonthly = report.is_monthly;
+    const parsedDate = isMonthly
+      ? new Date(`${report.date}-01T00:00:00`)
+      : new Date(`${report.date}T00:00:00`);
+
+    return {
+      date: report.date,
+      label: isMonthly ? format(parsedDate, "MMM yy") : format(parsedDate, "MMM d"),
+      calories: Math.round(report.totals.calories),
+      protein: Math.round(report.totals.protein),
+      carbs: Math.round(report.totals.carbs),
+      water_liters: Number(((report.water_ml || 0) / 1000).toFixed(1)),
+      training_minutes: report.training_minutes || 0,
+    };
+  });
+
   return (
     <div data-testid="reports-section">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -222,6 +240,53 @@ export const Reports = ({ selectedDate }) => {
           </div>
         </div>
       </div>
+
+      {reports.length > 0 && (
+        <div className="ft-card p-4 mb-4" data-testid="reports-trend-chart">
+          <div className="mb-3">
+            <h3 className="text-sm font-heading uppercase tracking-wider text-white">Trend overview</h3>
+            <p className="text-xs text-[#A0A0A0] font-body">
+              Calories, protein, carbs, water intake, and training minutes over selected period.
+            </p>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                <CartesianGrid stroke="#2A2A2A" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="label"
+                  stroke="#A0A0A0"
+                  tick={{ fill: "#A0A0A0", fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={{ stroke: "#2A2A2A" }}
+                />
+                <YAxis
+                  stroke="#A0A0A0"
+                  tick={{ fill: "#A0A0A0", fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={{ stroke: "#2A2A2A" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#141414",
+                    border: "1px solid #2A2A2A",
+                    borderRadius: "8px",
+                    color: "#FFFFFF",
+                  }}
+                  labelStyle={{ color: "#FFFFFF" }}
+                />
+                <Legend wrapperStyle={{ fontSize: "11px" }} />
+                <Line type="monotone" dataKey="calories" name="Calories" stroke="#FFFFFF" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="protein" name="Protein (g)" stroke="#007AFF" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="carbs" name="Carbs (g)" stroke="#FF3B30" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="water_liters" name="Water (L)" stroke="#6EC6FF" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="training_minutes" name="Training (min)" stroke="#FF9F0A" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       <div className="ft-card overflow-hidden" data-testid="reports-list">
         {loading ? (

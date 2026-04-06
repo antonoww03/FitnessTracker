@@ -1,0 +1,104 @@
+{
+  "project_name": "Personal Training and Nutrition Dashboard",
+  "theme": "dark",
+  "archetype": "2: The Performance Pro",
+  "emotional_tone": "Elite athleticism, precision, command-center focus, high visibility",
+  "fonts": {
+    "heading": "Barlow Condensed",
+    "body": "DM Sans",
+    "instructions": "Use 'Barlow Condensed' for all headings (H1-H4) with tight tracking and uppercase styling for a heavy-weight athletic feel. Use 'DM Sans' for body text and numbers with increased tracking for legibility."
+  },
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#141414",
+    "border": "#2A2A2A",
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A0A0A0",
+      "inverse": "#000000"
+    },
+    "accents": {
+      "primary": "#007AFF",
+      "secondary": "#FF3B30",
+      "success": "#32D74B",
+      "warning": "#FF9F0A"
+    },
+    "macros": {
+      "calories": "#FFFFFF",
+      "protein": "#007AFF",
+      "fat": "#FF9F0A",
+      "carbs": "#FF3B30",
+      "sugar": "#FF2D55",
+      "fiber": "#32D74B"
+    }
+  },
+  "layout": {
+    "strategy": "The 'Control Room' Grid",
+    "base_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4",
+    "gap": "gap-4 md:gap-6",
+    "container_padding": "p-4 md:p-6 lg:p-8",
+    "sections": {
+      "header": "Sticky header with user avatar, greeting, and high-level date/status.",
+      "macros_dashboard": "col-span-1 md:col-span-3 lg:col-span-2 row-span-2. Houses the main Calorie circular counter and a grid of 5 smaller circular counters for the other macros.",
+      "ai_food_entry": "col-span-1 md:col-span-2 lg:col-span-2 row-span-1. Textarea and submit button for AI processing.",
+      "training_log": "col-span-1 md:col-span-1 lg:col-span-1 row-span-1. Select and input form for workouts.",
+      "daily_goals": "Triggered via a button on the Macros Dashboard opening a Shadcn Dialog, or a separate card if space permits. A Dialog is preferred to save space.",
+      "activity_feed": "col-span-1 md:col-span-3 lg:col-span-4 row-span-1. A list showing today's logged food and training."
+    }
+  },
+  "surfaces": {
+    "cards": "Flat solid background bg-[#141414], 1px border border-[#2A2A2A], no shadow. Add subtle hover states (e.g., border-white/20). Rounded corners should be minimal, max 8px (rounded-md).",
+    "buttons": "High saturation blocks. Primary buttons should use #007AFF or #FF3B30 with white text. Rounded corners max 8px.",
+    "inputs": "bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF]."
+  },
+  "components": {
+    "circular_counters": {
+      "type": "custom_svg",
+      "description": "Since Shadcn does not have a circular progress bar, the main agent MUST build a custom SVG component using <svg>, <circle>, and stroke-dasharray. The main Calories counter should be large (e.g., 200px), while the 5 macro counters should be smaller (e.g., 80px). Ensure they use the exact colors defined in 'colors.macros'."
+    },
+    "ai_food_entry": {
+      "type": "shadcn_form",
+      "description": "Use Shadcn Textarea for natural language input (e.g., 'I ate 2 eggs and a banana'). Include a prominent 'Log Food' button. The AI integration should mock the OpenAI call returning a parsed JSON of macros, or implement it if possible. Highlight the mockup state."
+    },
+    "training_log": {
+      "type": "shadcn_form",
+      "description": "Use Shadcn Select for the 8 default categories (Strength, Cardio, HIIT, Yoga, Swimming, Cycling, Running, Walking). Use Shadcn Input (type=number) for duration in minutes."
+    },
+    "daily_goals_dialog": {
+      "type": "shadcn_dialog",
+      "description": "A modal dialog containing a form to update the target values for Calories, Protein, Fat, Carbs, Sugar, and Fiber."
+    }
+  },
+  "motion_and_interactions": {
+    "hover": "All interactive elements MUST have a visible hover state with higher contrast (e.g., bg-[#2A2A2A] hover:bg-[#3A3A3A] hover:text-white).",
+    "focus": "Inputs and buttons must have a clear focus ring (focus:ring-2 focus:ring-[#007AFF]).",
+    "transitions": "Use transition-all duration-200 ease-in-out for buttons and cards."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "user_avatar",
+        "url": "https://images.pexels.com/photos/2216611/pexels-photo-2216611.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Dark, confident athlete portrait used as the placeholder profile picture in the header."
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "instructions": "Use Lucide React for UI icons (e.g., Activity, Flame, Droplet, Dumbbell, Settings). Ensure icons use text colors corresponding to their context."
+    }
+  },
+  "accessibility_and_testing": {
+    "data_testid": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='log-food-button', data-testid='calorie-counter').",
+    "contrast": "Ensure text contrast against the #0A0A0A or #141414 backgrounds. Do not use fully transparent overlays over content."
+  },
+  "instructions_to_main_agent": [
+    "Install the required fonts: 'Barlow Condensed' and 'DM Sans' via Google Fonts in index.html or global css.",
+    "Configure tailwind.config.js to include the custom colors and fonts defined here.",
+    "Implement the Layout Strategy: 'Control Room' Grid with precise column spanning.",
+    "MOCK the OpenAI integration for food recognition if no backend is provided. Create a dummy service that simulates a 2-second delay and returns plausible macros based on the user's text. HIGHLIGHT THIS AS MOCKED in the UI or comments.",
+    "Build the Custom Circular Progress component using SVG. This is a hard requirement. Do not try to find it in Shadcn as it doesn't exist.",
+    "Ensure all 8 training categories are exactly as specified.",
+    "Implement local state or mock context to handle the Daily Goals and accumulating macros/training times so the dashboard is interactive and functional for a single session.",
+    "All cards must have a border and flat background; do not use heavy drop shadows."
+  ]
+}

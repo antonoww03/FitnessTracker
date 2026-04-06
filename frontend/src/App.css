@@ -1,0 +1,80 @@
+/* Circular progress animation */
+.circular-progress-bg {
+    fill: none;
+    stroke: #1A1A1A;
+}
+
+.circular-progress-bar {
+    fill: none;
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    transition: stroke-dashoffset 0.8s ease-out;
+}
+
+/* Card hover effects */
+.ft-card {
+    background: #141414;
+    border: 1px solid #2A2A2A;
+    border-radius: 8px;
+    transition: border-color 0.2s ease-in-out;
+}
+
+.ft-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Input focus states */
+.ft-input {
+    background: #0A0A0A;
+    border: 1px solid #2A2A2A;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.ft-input:focus {
+    border-color: #007AFF;
+    box-shadow: 0 0 0 1px #007AFF;
+    outline: none;
+}
+
+/* Button animations */
+.ft-btn-primary {
+    background: #007AFF;
+    color: white;
+}
+
+.ft-btn-danger {
+    background: #FF3B30;
+    color: white;
+}
+
+/* Animations */
+@keyframes slide-up-fade {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+    animation: slide-up-fade 0.4s ease-out forwards;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+
+/* ============================== */
+/* 🔥 PERMANENT REMOVE WATERMARK */
+/* ============================== */
+
+#emergent-badge,
+#emergent-badge *,
+[id*="emergent"],
+[class*="emergent"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}

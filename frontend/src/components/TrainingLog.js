@@ -1,0 +1,110 @@
+import React, { useState } from "react";
+import axios from "axios";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Loader2, Dumbbell } from "lucide-react";
+import { toast } from "sonner";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const TRAINING_TYPES = [
+  "Strength",
+  "Cardio",
+  "HIIT",
+  "Yoga",
+  "Swimming",
+  "Cycling",
+  "Running",
+  "Walking",
+];
+
+export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
+  const [trainingType, setTrainingType] = useState("");
+  const [duration, setDuration] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!trainingType || !duration || parseInt(duration) <= 0) {
+      toast.error("Select a type and enter duration.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await axios.post(`${API}/training`, {
+        training_type: trainingType,
+        duration_minutes: parseInt(duration),
+        date: selectedDate,
+      });
+      toast.success(`${trainingType} - ${duration}min logged`);
+      setTrainingType("");
+      setDuration("");
+      onTrainingLogged();
+    } catch (err) {
+      toast.error("Failed to log training.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="ft-card p-5" data-testid="training-log">
+      <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-4">
+        Log Training
+      </h2>
+
+      <div className="space-y-3">
+        <Select value={trainingType} onValueChange={setTrainingType}>
+          <SelectTrigger
+            className="bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] h-10 font-body text-sm"
+            data-testid="training-type-select"
+          >
+            <SelectValue placeholder="Select training type" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#141414] border-[#2A2A2A]">
+            {TRAINING_TYPES.map((type) => (
+              <SelectItem
+                key={type}
+                value={type}
+                className="text-white hover:bg-[#2A2A2A] focus:bg-[#2A2A2A] focus:text-white font-body text-sm cursor-pointer"
+                data-testid={`training-type-${type.toLowerCase()}`}
+              >
+                {type}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Input
+          type="number"
+          placeholder="Duration (minutes)"
+          value={duration}
+          onChange={(e) => setDuration(e.target.value)}
+          min="1"
+          className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-10 font-body text-sm"
+          data-testid="training-duration-input"
+        />
+
+        <Button
+          onClick={handleSubmit}
+          disabled={saving || !trainingType || !duration}
+          className="w-full bg-[#FF3B30] hover:bg-[#D32F2F] text-white font-heading uppercase tracking-wider text-sm font-bold h-10 rounded-md transition-all duration-200"
+          data-testid="log-training-button"
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Dumbbell className="h-4 w-4 mr-2" />
+          )}
+          Log Training
+        </Button>
+      </div>
+    </div>
+  );
+};

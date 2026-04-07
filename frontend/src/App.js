@@ -168,9 +168,10 @@ function App() {
           {/* Activity Feed */}
           <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-6">
             <ActivityFeed
-              foods={foods}
-              trainings={trainings}
-              onRefresh={fetchData}
+                foods={foods}
+                trainings={trainings}
+                onRefresh={fetchData}
+                selectedDate={selectedDate}
             />
           </div>
         </div>

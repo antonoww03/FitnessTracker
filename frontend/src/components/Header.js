@@ -33,7 +33,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
         </div>
         <div>
           <h1 className="font-heading text-2xl sm:text-3xl uppercase font-extrabold tracking-wider text-white leading-none">
-            FitTrack
+            EGT Digital Track
           </h1>
           <p className="text-[11px] text-[#A0A0A0] font-body tracking-wide mt-0.5">
             {totalTrainingMinutes > 0

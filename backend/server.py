@@ -85,7 +85,8 @@ class WaterLogCreate(BaseModel):
 food_storage = []
 training_storage = []
 water_storage = []
-cache = {}  # 🔥 caching
+reports_storage = {}
+cache = {}
 
 # ---------------- USDA ANALYZE ----------------
 
@@ -96,29 +97,26 @@ async def analyze_food(req: FoodAnalyzeRequest):
 
         print("🔍 Searching:", query)
 
-        # 🔥 CACHE HIT
         if query in cache:
             print("⚡ CACHE HIT")
             return cache[query]
 
-        url = "https://api.nal.usda.gov/fdc/v1/foods/search"
-
         res = requests.get(
-            url,
+            "https://api.nal.usda.gov/fdc/v1/foods/search",
             params={
                 "query": query,
                 "pageSize": 1,
                 "api_key": os.environ.get("USDA_API_KEY")
             },
-            timeout=3  # 🔥 супер важно
+            timeout=3
         )
 
         if res.status_code != 200:
             raise Exception(f"USDA error: {res.status_code}")
 
         data = res.json()
-
         foods = data.get("foods", [])
+
         if not foods:
             raise Exception("No food found")
 
@@ -138,7 +136,6 @@ async def analyze_food(req: FoodAnalyzeRequest):
             "fiber": nutrients.get("Fiber, total dietary", 0),
         }
 
-        # 🔥 SAVE CACHE
         cache[query] = result
 
         print("✅ RESULT:", result)
@@ -263,6 +260,47 @@ async def summary(date: str):
         "weight_kg": None
     }
 
+# ---------------- REPORTS ----------------
+
+@api_router.post("/reports/save")
+async def save_report(date: str):
+    foods = [f for f in food_storage if f.date == date]
+    trainings = [t for t in training_storage if t.date == date]
+    waters = [w for w in water_storage if w.date == date]
+
+    report = {
+        "date": date,
+        "totals": {
+            "calories": sum(f.calories for f in foods),
+            "protein": sum(f.protein for f in foods),
+            "fat": sum(f.fat for f in foods),
+            "carbs": sum(f.carbs for f in foods),
+            "sugar": sum(f.sugar for f in foods),
+            "fiber": sum(f.fiber for f in foods),
+        },
+        "training_minutes": sum(t.duration_minutes for t in trainings),
+        "water_ml": sum(w.amount_ml for w in waters),
+    }
+
+    reports_storage[date] = report
+
+    print("💾 SAVED REPORT:", report)
+
+    return {"ok": True, "report": report}
+
+
+@api_router.get("/reports")
+async def get_reports():
+    return list(reports_storage.values())
+
+
+@api_router.delete("/reports/{date}")
+async def delete_report(date: str):
+    if date in reports_storage:
+        del reports_storage[date]
+        return {"ok": True}
+
+    raise HTTPException(status_code=404, detail="Report not found")
 # ---------------- REGISTER ----------------
 
 app.include_router(api_router, prefix="/api")

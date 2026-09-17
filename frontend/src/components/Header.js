@@ -26,7 +26,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
   };
 
   return (
-    <header className="flex items-center justify-between mb-6 md:mb-8" data-testid="app-header">
+    <header className="flex flex-wrap gap-3 items-center justify-between mb-6 md:mb-8" data-testid="app-header">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-md bg-[#007AFF] flex items-center justify-center">
           <Activity className="h-5 w-5 text-white" />
@@ -37,7 +37,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
           </h1>
           <p className="text-[11px] text-[#A0A0A0] font-body tracking-wide mt-0.5">
             {totalTrainingMinutes > 0
-              ? `${totalTrainingMinutes} min trained today`
+              ? `${totalTrainingMinutes} min trained ${isToday ? "today" : "on this date"}`
               : "Personal dashboard"}
           </p>
         </div>
@@ -49,6 +49,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
           size="icon"
           onClick={goToPrev}
           className="h-8 w-8 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
+          aria-label="Previous day"
           data-testid="prev-day-button"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -95,6 +96,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
           size="icon"
           onClick={goToNext}
           className="h-8 w-8 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
+          aria-label="Next day"
           data-testid="next-day-button"
         >
           <ChevronRight className="h-4 w-4" />

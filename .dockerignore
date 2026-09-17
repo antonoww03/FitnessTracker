@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/build
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/venv
+**/.env
+**/.env.*
+**/*.sqlite3
+**/*.sqlite3-*
+backend/data
+frontend/tests
+tests
+test_reports
+memory

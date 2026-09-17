@@ -5,15 +5,16 @@ import { Scale, Check } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
   const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    const w = parseFloat(weight);
-    if (!w || w <= 0) return;
+    if (saving) return;
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w <= 0) { toast.error("Enter a positive weight."); return; }
     setSaving(true);
     try {
       await axios.post(`${API}/weight`, { weight_kg: w, date: selectedDate });
@@ -57,6 +58,7 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
           onClick={handleSave}
           disabled={saving || !weight}
           className="bg-[#007AFF] hover:bg-[#0062CC] text-white h-9 px-4 rounded-md"
+          aria-label="Save weight"
           data-testid="save-weight-button"
         >
           <Check className="h-4 w-4" />

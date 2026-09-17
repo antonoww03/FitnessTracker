@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Droplet, Plus } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 const WaterBottle = ({ totalMl, maxMl = 3000 }) => {
     const fillPercent = Math.min(totalMl / maxMl, 1);
@@ -77,97 +77,41 @@ const WaterBottle = ({ totalMl, maxMl = 3000 }) => {
     );
 };
 
-export const WaterTracker = ({ selectedDate }) => {
+export const WaterTracker = ({ selectedDate, totalWaterMl, onWaterLogged, streak }) => {
     const [customAmount, setCustomAmount] = useState("");
-    const [totalWaterMl, setTotalWaterMl] = useState(0);
-
-    const fetchWater = async () => {
-        try {
-            const res = await axios.get(`${API}/water`, {
-                params: { date: selectedDate }
-            });
-
-            const total = res.data.reduce((sum, w) => sum + w.amount_ml, 0);
-            setTotalWaterMl(total);
-        } catch (err) {
-            console.error(err);
+    const [saving, setSaving] = useState(false);
+    const changeWater = async (amount) => {
+        if (saving) return;
+        if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) {
+            toast.error("Enter a positive amount in ml.");
+            return;
         }
-    };
-
-    const addWater = async (amountMl) => {
+        if (amount === null && !window.confirm("Reset water for this date?")) return;
+        setSaving(true);
         try {
-            await axios.post(`${API}/water`, {
-                amount_ml: amountMl,
-                date: selectedDate
-            });
-
-            toast.success(`+${amountMl}ml added`);
-            await fetchWater();
+            if (amount === null) await axios.delete(`${API}/water`, { params: { date: selectedDate } });
+            else await axios.post(`${API}/water`, { amount_ml: amount, date: selectedDate });
+            setCustomAmount("");
+            toast.success(amount === null ? "Water reset" : `+${amount} ml added`);
+            await onWaterLogged();
         } catch {
-            toast.error("Failed to log water.");
+            toast.error("Could not update water.");
+        } finally {
+            setSaving(false);
         }
     };
-
-    const resetWater = async () => {
-        try {
-            await axios.delete(`${API}/water`, {
-                params: { date: selectedDate }
-            });
-
-            setTotalWaterMl(0);
-            toast.success("Water reset");
-        } catch {
-            toast.error("Failed to reset water");
-        }
-    };
-
-    const handleCustomAdd = () => {
-        const amt = parseInt(customAmount);
-        if (!amt || amt <= 0) return;
-        addWater(amt);
-        setCustomAmount("");
-    };
-
-    useEffect(() => {
-        fetchWater();
-    }, [selectedDate]);
-
     return (
-        <div className="ft-card p-5 flex flex-col">
-            <h2 className="text-lg font-bold text-white mb-2">
-                <Droplet className="inline h-4 w-4 mr-1 text-[#6EC6FF]" />
-                Water
-            </h2>
-
-            <div className="flex justify-center">
-                <WaterBottle totalMl={totalWaterMl} />
+        <div className="ft-card p-5 flex flex-col" data-testid="water-tracker">
+            <h2 className="text-lg font-bold text-white mb-2"><Droplet className="inline h-4 w-4 mr-1 text-[#6EC6FF]" />Water</h2>
+            <p className="text-xs text-gray-400 text-center" data-testid="water-streak">{streak} day water streak</p>
+            <div className="flex justify-center"><WaterBottle totalMl={totalWaterMl} /></div>
+            <div className="grid grid-cols-2 gap-2 mt-4">
+                {[250, 500, 1000].map((amount) => <Button key={amount} disabled={saving} onClick={() => changeWater(amount)}>+{amount} ml</Button>)}
+                <Button disabled={saving || totalWaterMl === 0} onClick={() => changeWater(null)} className="bg-red-600 hover:bg-red-700 text-white">Reset</Button>
             </div>
-
-            <div className="grid grid-cols-4 gap-2 mt-4">
-                {[250, 500, 1000].map((amt) => (
-                    <Button key={amt} onClick={() => addWater(amt)}>
-                        +{amt >= 1000 ? `${amt / 1000}L` : `${amt}ml`}
-                    </Button>
-                ))}
-
-                <Button
-                    onClick={resetWater}
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                >
-                    Reset
-                </Button>
-            </div>
-
             <div className="flex gap-2 mt-2">
-                <Input
-                    type="number"
-                    placeholder="ml"
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                />
-                <Button onClick={handleCustomAdd}>
-                    <Plus className="h-4 w-4" />
-                </Button>
+                <Input aria-label="Water amount in ml" type="number" min="1" placeholder="ml" value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} />
+                <Button aria-label="Add water" disabled={saving || !customAmount} onClick={() => changeWater(Number(customAmount))}><Plus className="h-4 w-4" /></Button>
             </div>
         </div>
     );

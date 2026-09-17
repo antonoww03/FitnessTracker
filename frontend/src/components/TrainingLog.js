@@ -12,7 +12,7 @@ import {
 import { Loader2, Dumbbell } from "lucide-react";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 const TRAINING_TYPES = [
   "Strength",
@@ -31,7 +31,8 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
-    if (!trainingType || !duration || parseInt(duration) <= 0) {
+    if (saving) return;
+    if (!trainingType || !Number.isInteger(Number(duration)) || Number(duration) <= 0 || Number(duration) > 1440) {
       toast.error("Select a type and enter duration.");
       return;
     }
@@ -39,7 +40,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
     try {
       await axios.post(`${API}/training`, {
         training_type: trainingType,
-        duration_minutes: parseInt(duration),
+        duration_minutes: Number(duration),
         date: selectedDate,
       });
       toast.success(`${trainingType} - ${duration}min logged`);
@@ -87,6 +88,8 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
           value={duration}
           onChange={(e) => setDuration(e.target.value)}
           min="1"
+          max="1440"
+          step="1"
           className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-10 font-body text-sm"
           data-testid="training-duration-input"
         />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import "@/App.css";
 import axios from "axios";
 import { format } from "date-fns";
@@ -14,7 +14,7 @@ import { WeightTracker } from "./components/WeightTracker";
 import { CoachTips } from "./components/CoachTips";
 import { Reports } from "./components/Reports";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 const DEFAULT_GOALS = {
   calories: 2000,
@@ -47,15 +47,27 @@ function App() {
   const [weightKg, setWeightKg] = useState(null);
   const [waterStreak, setWaterStreak] = useState(0);
 
+  const currentDate = useRef(selectedDate);
+  currentDate.current = selectedDate;
+  const requestId = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [loadedDate, setLoadedDate] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+
   const fetchData = useCallback(async () => {
+    if (selectedDate !== currentDate.current) return;
+    const id = ++requestId.current;
+    setLoading(true);
+    setLoadError(false);
     try {
-      const [summaryRes, foodsRes, trainingsRes, waterRes, streakRes] = await Promise.all([
+      const [summaryRes, foodsRes, trainingsRes, streakRes] = await Promise.all([
         axios.get(`${API}/summary?date=${selectedDate}`),
         axios.get(`${API}/food?date=${selectedDate}`),
         axios.get(`${API}/training?date=${selectedDate}`),
-        axios.get(`${API}/water?date=${selectedDate}`),
-        axios.get(`${API}/streak/water`),
+        axios.get(`${API}/streak/water?date=${selectedDate}`),
       ]);
+      if (id !== requestId.current || selectedDate !== currentDate.current) return;
+      setLoadedDate(selectedDate);
       setTotals(summaryRes.data.totals);
       setGoals(summaryRes.data.goals);
       setTotalTrainingMinutes(summaryRes.data.total_training_minutes);
@@ -65,26 +77,15 @@ function App() {
       setTrainings(trainingsRes.data);
       setWaterStreak(streakRes.data.streak || 0);
     } catch (err) {
-      console.error("Failed to fetch data:", err);
+      if (id === requestId.current && selectedDate === currentDate.current) setLoadError(true);
+    } finally {
+      if (id === requestId.current && selectedDate === currentDate.current) setLoading(false);
     }
   }, [selectedDate]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Also fetch goals on mount
-  useEffect(() => {
-    const fetchGoals = async () => {
-      try {
-        const res = await axios.get(`${API}/goals`);
-        setGoals(res.data);
-      } catch (err) {
-        console.error("Failed to fetch goals:", err);
-      }
-    };
-    fetchGoals();
-  }, []);
 
   return (
     <div className="min-h-screen bg-[#0A0A0A]" data-testid="app-root">
@@ -105,7 +106,7 @@ function App() {
         <Header
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
-          totalTrainingMinutes={totalTrainingMinutes}
+          totalTrainingMinutes={loading || loadError ? 0 : totalTrainingMinutes}
         />
 
         {/* Tabs */}
@@ -127,7 +128,9 @@ function App() {
         </div>
 
         {activeTab === "dashboard" ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+        (loading && loadedDate !== selectedDate) || (!loadError && loadedDate !== selectedDate) ? <p role="status" className="text-white py-8">Loading {selectedDate}…</p> :
+        loadError ? <div role="alert" className="text-white py-8">Could not load this day. <button className="underline" onClick={fetchData}>Retry</button></div> :
+        <div key={selectedDate} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
           {/* Macros Dashboard */}
           <div className="md:col-span-2 lg:col-span-2 animate-slide-up stagger-1">
             <MacrosDashboard
@@ -162,7 +165,7 @@ function App() {
 
           {/* AI Coach */}
           <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-5">
-            <CoachTips selectedDate={selectedDate} />
+            <CoachTips key={JSON.stringify([selectedDate, totals, goals, totalWaterMl, totalTrainingMinutes])} selectedDate={selectedDate} />
           </div>
 
           {/* Activity Feed */}

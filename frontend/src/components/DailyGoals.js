@@ -12,7 +12,7 @@ import { Loader2, Target } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 const GOAL_FIELDS = [
   { key: "calories", label: "Calories", unit: "kcal", color: "#FFFFFF" },
@@ -34,9 +34,14 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
   }, [open, goals]);
 
   const handleSave = async () => {
+    if (saving) return;
+    if (Object.values(formGoals).some((value) => value === "" || !Number.isFinite(Number(value)) || Number(value) < 0)) {
+      toast.error("Enter a non-negative number for every goal.");
+      return;
+    }
     setSaving(true);
     try {
-      const res = await axios.put(`${API}/goals`, formGoals);
+      const res = await axios.put(`${API}/goals`, Object.fromEntries(Object.entries(formGoals).map(([key, value]) => [key, Number(value)])));
       onGoalsUpdated(res.data);
       toast.success("Goals updated");
       onOpenChange(false);
@@ -71,9 +76,9 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
               </label>
               <Input
                 type="number"
-                value={formGoals[field.key] || ""}
+                value={formGoals[field.key] ?? ""}
                 onChange={(e) =>
-                  setFormGoals({ ...formGoals, [field.key]: parseFloat(e.target.value) || 0 })
+                  setFormGoals({ ...formGoals, [field.key]: e.target.value })
                 }
                 min="0"
                 className="bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-9 font-body text-sm"

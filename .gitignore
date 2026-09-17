@@ -83,3 +83,12 @@ android-sdk/-e
 # Environment files
 *.env
 *.env.*
+
+# Local configuration examples are safe to commit.
+!.env.example
+!**/.env.example
+backend/data/
+*.sqlite3
+*.sqlite3-*
+frontend/build/
+.pytest_cache/

@@ -27,6 +27,7 @@ export const MacrosDashboard = ({ totals, goals, onOpenGoals }) => {
           size="icon"
           onClick={onOpenGoals}
           className="text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
+          aria-label="Edit daily goals"
           data-testid="open-goals-button"
         >
           <Settings className="h-4 w-4" />
@@ -47,7 +48,7 @@ export const MacrosDashboard = ({ totals, goals, onOpenGoals }) => {
         />
 
         {/* Macro circles grid */}
-        <div className="grid grid-cols-5 gap-3 w-full" data-testid="macro-circles-grid">
+        <div className="grid grid-cols-3 xl:grid-cols-5 gap-3 w-full" data-testid="macro-circles-grid">
           {MACRO_CONFIG.map((macro) => {
             const val = totals[macro.key] || 0;
             const goalVal = goals[macro.key] || 0;

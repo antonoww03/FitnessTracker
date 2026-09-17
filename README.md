@@ -68,3 +68,22 @@ npm run test:e2e
 `FITTRACK_E2E_URL` may override the local frontend URL; non-local hosts are rejected. `CHROMIUM_EXECUTABLE_PATH` optionally selects an installed Chromium binary. Never run this suite against a database containing personal records.
 
 See [AUDIT.md](AUDIT.md) for findings, changes and test limitations. Older `test_reports/`, `test_result.md` and `memory/PRD.md` describe historical versions; they do not establish the behavior of the current code.
+
+## Run the complete production app on one address
+
+After building the frontend with an empty `REACT_APP_BACKEND_URL`, run:
+
+```bash
+python -m backend.serve
+```
+
+The UI and API are both available at `http://127.0.0.1:8000`. The default bind address is local-only. `HOST` and `PORT` can override it for a hosting service.
+
+A Dockerfile is included for services such as Render:
+
+```bash
+docker build -t fittrack .
+docker run --rm -p 127.0.0.1:8000:8000 -v fittrack-data:/app/backend/data fittrack
+```
+
+Configure a persistent disk at `/app/backend/data` (writable by UID 10001), or point `FITTRACK_DB_PATH` at another persistent writable path. Use `/api` as the health check. `USDA_API_KEY` is optional and belongs in the host's secret/environment settings, never in the image. Do not expose personal data on a public URL without an authentication layer; an unprotected preview must contain disposable demo data only.

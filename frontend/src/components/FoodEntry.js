@@ -46,7 +46,7 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
     finally { setBusy(false); }
   };
   return <div className="ft-card p-5" data-testid="food-entry">
-    <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-4">Log Food</h2>
+    <h2 className="font-body text-lg tracking-normal font-bold text-white mb-4">Log Food</h2>
     <Textarea aria-label="Food description" disabled={busy} placeholder="200 g chicken breast; 100 g cooked rice" value={description}
       onChange={(e) => { setDescription(e.target.value); setAnalysis(null); if (!manual) setValues(emptyMacros()); }}
       className="bg-[#0A0A0A] border-[#2A2A2A] text-white text-sm" data-testid="food-description-input" />
@@ -65,7 +65,7 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
           <Input aria-label={key} type="number" min="0" step="any" disabled={busy} value={values[key]} onChange={(e) => setValues({ ...values, [key]: e.target.value })} />
         </label>)}
       </div>
-      <Button onClick={save} disabled={busy} className="mt-3 w-full bg-green-600" data-testid="confirm-food-button">Confirm</Button>
+      <Button onClick={save} disabled={busy} className="mt-3 w-full bg-[#007AFF]" data-testid="confirm-food-button">Confirm</Button>
       <Button onClick={() => { setAnalysis(null); setManual(false); }} disabled={busy} variant="ghost" className="w-full text-gray-400" data-testid="cancel-food-button">Cancel</Button>
     </div>}
   </div>;

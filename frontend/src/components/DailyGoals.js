@@ -56,7 +56,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#141414] border-[#2A2A2A] text-white max-w-md" data-testid="daily-goals-dialog">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl uppercase tracking-widest font-bold text-white flex items-center gap-2">
+          <DialogTitle className="font-body text-xl tracking-normal font-bold text-white flex items-center gap-2">
             <Target className="h-5 w-5 text-[#007AFF]" />
             Daily Goals
           </DialogTitle>
@@ -69,7 +69,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
           {GOAL_FIELDS.map((field) => (
             <div key={field.key} className="space-y-1">
               <label
-                className="text-[11px] uppercase tracking-wider font-heading font-semibold"
+                className="text-[11px] tracking-normal font-body font-semibold"
                 style={{ color: field.color }}
               >
                 {field.label} ({field.unit})
@@ -91,7 +91,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="mt-4 w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-heading uppercase tracking-wider text-sm font-bold h-10 rounded-md"
+          className="mt-4 w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md"
           data-testid="save-goals-button"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}

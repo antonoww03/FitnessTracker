@@ -26,16 +26,16 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
   };
 
   return (
-    <header className="flex flex-wrap gap-3 items-center justify-between mb-6 md:mb-8" data-testid="app-header">
+    <header className="ft-header" data-testid="app-header">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-md bg-[#007AFF] flex items-center justify-center">
           <Activity className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="font-heading text-2xl sm:text-3xl uppercase font-extrabold tracking-wider text-white leading-none">
+          <h1 className="ft-brand">
             EGT Digital Track
           </h1>
-          <p className="text-[11px] text-[#A0A0A0] font-body tracking-wide mt-0.5">
+          <p className="ft-brand-subtitle">
             {totalTrainingMinutes > 0
               ? `${totalTrainingMinutes} min trained ${isToday ? "today" : "on this date"}`
               : "Personal dashboard"}
@@ -43,7 +43,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="ft-date-controls">
         <Button
           variant="ghost"
           size="icon"

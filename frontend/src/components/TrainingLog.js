@@ -56,7 +56,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
 
   return (
     <div className="ft-card p-5" data-testid="training-log">
-      <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-4">
+      <h2 className="font-body text-lg tracking-normal font-bold text-white mb-4">
         Log Training
       </h2>
 
@@ -97,7 +97,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
         <Button
           onClick={handleSubmit}
           disabled={saving || !trainingType || !duration}
-          className="w-full bg-[#FF3B30] hover:bg-[#D32F2F] text-white font-heading uppercase tracking-wider text-sm font-bold h-10 rounded-md transition-all duration-200"
+          className="w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md transition-all duration-200"
           data-testid="log-training-button"
         >
           {saving ? (

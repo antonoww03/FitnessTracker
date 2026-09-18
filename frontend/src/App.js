@@ -14,6 +14,8 @@ import { WeightTracker } from "./components/WeightTracker";
 import { CoachTips } from "./components/CoachTips";
 import { Reports } from "./components/Reports";
 
+import { Plus, X, LayoutDashboard, History, ChartNoAxesCombined, Scale, Dumbbell, Utensils, Droplets } from "lucide-react";
+
 import { API } from "@/lib/api";
 
 const DEFAULT_GOALS = {
@@ -47,6 +49,7 @@ function App() {
   const [weightKg, setWeightKg] = useState(null);
   const [waterStreak, setWaterStreak] = useState(0);
 
+  const [entryType, setEntryType] = useState(null);
   const currentDate = useRef(selectedDate);
   currentDate.current = selectedDate;
   const requestId = useRef(0);
@@ -87,113 +90,50 @@ function App() {
     fetchData();
   }, [fetchData]);
 
-  return (
-    <div className="min-h-screen bg-[#0A0A0A]" data-testid="app-root">
-      <Toaster
-        theme="dark"
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: "#141414",
-            border: "1px solid #2A2A2A",
-            color: "#FFFFFF",
-            fontFamily: "'DM Sans', sans-serif",
-          },
-        }}
-      />
+  const openEntry = (type = "food") => {
+    setEntryType(type);
+    if (activeTab === "reports") setActiveTab("dashboard");
+  };
+  const afterSave = async () => { await fetchData(); if (currentDate.current === selectedDate) setEntryType(null); };
+  const changeDate = (date) => { setSelectedDate(date); setEntryType(null); };
+  const waiting = loadedDate !== selectedDate && (loading || !loadError);
 
-      <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-        <Header
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          totalTrainingMinutes={loading || loadError ? 0 : totalTrainingMinutes}
-        />
-
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-[#141414] rounded-md p-1 w-fit border border-[#2A2A2A]" data-testid="main-tabs">
-          <button
-            onClick={() => setActiveTab("dashboard")}
-            className={`px-4 py-1.5 rounded-md text-sm font-heading uppercase tracking-wider transition-all duration-200 ${activeTab === "dashboard" ? "bg-[#007AFF] text-white" : "text-[#A0A0A0] hover:text-white"}`}
-            data-testid="tab-dashboard"
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab("reports")}
-            className={`px-4 py-1.5 rounded-md text-sm font-heading uppercase tracking-wider transition-all duration-200 ${activeTab === "reports" ? "bg-[#007AFF] text-white" : "text-[#A0A0A0] hover:text-white"}`}
-            data-testid="tab-reports"
-          >
-            Reports
-          </button>
-        </div>
-
-        {activeTab === "dashboard" ? (
-        (loading && loadedDate !== selectedDate) || (!loadError && loadedDate !== selectedDate) ? <p role="status" className="text-white py-8">Loading {selectedDate}…</p> :
-        loadError ? <div role="alert" className="text-white py-8">Could not load this day. <button className="underline" onClick={fetchData}>Retry</button></div> :
-        <div key={selectedDate} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-          {/* Macros Dashboard */}
-          <div className="md:col-span-2 lg:col-span-2 animate-slide-up stagger-1">
-            <MacrosDashboard
-              totals={totals}
-              goals={goals}
-              onOpenGoals={() => setGoalsOpen(true)}
-            />
-          </div>
-
-          {/* Water Tracker */}
-          <div className="md:col-span-1 lg:col-span-1 animate-slide-up stagger-2">
-            <WaterTracker
-              selectedDate={selectedDate}
-              totalWaterMl={totalWaterMl}
-              onWaterLogged={fetchData}
-              streak={waterStreak}
-            />
-          </div>
-
-          {/* Forms: Food + Training + Weight */}
-          <div className="md:col-span-3 lg:col-span-1 space-y-4 md:space-y-6">
-            <div className="animate-slide-up stagger-3">
-              <FoodEntry selectedDate={selectedDate} onFoodLogged={fetchData} />
+  return <div className="ft-app" data-testid="app-root">
+    <Toaster theme="dark" position="top-right" />
+    <div className="ft-shell">
+      <Header selectedDate={selectedDate} onDateChange={changeDate} totalTrainingMinutes={totalTrainingMinutes}/>
+      <div className="ft-page-heading"><div><span className="ft-eyebrow">Your personal dashboard</span><h1>{activeTab === "reports" ? "Your reports" : activeTab === "history" ? "Your history" : "A little better, every day."}</h1></div>
+        <button className="ft-primary" onClick={() => openEntry()} data-testid="add-entry-button"><Plus size={18}/>Add entry</button></div>
+      <nav className="ft-nav" aria-label="Main navigation" data-testid="main-tabs">
+        {[['dashboard','Today',LayoutDashboard],['history','History',History],['reports','Reports',ChartNoAxesCombined]].map(([key,label,Icon])=>
+          <button key={key} aria-current={activeTab===key?'page':undefined} onClick={()=>{setActiveTab(key);setEntryType(null);if(key==='dashboard')changeDate(format(new Date(),"yyyy-MM-dd"));}} data-testid={`tab-${key}`}><Icon size={18}/><span>{label}</span></button>)}
+      </nav>
+      <main>
+      {activeTab === "reports" ? <Reports selectedDate={selectedDate}/> : waiting ? <p role="status" className="ft-status">Loading {selectedDate}…</p> : loadError ? <div role="alert" className="ft-status">Could not load this day. <button onClick={fetchData}>Retry</button></div> :
+        <div key={selectedDate} className="ft-content">
+          {entryType && <section className="ft-entry-panel" aria-label="Add entry" data-testid="entry-panel">
+            <div className="ft-section-head"><div><span className="ft-eyebrow">{selectedDate}</span><h2>Add an entry</h2></div><button className="ft-icon-button" aria-label="Close entry form" onClick={()=>setEntryType(null)}><X size={20}/></button></div>
+            <div className="ft-entry-types" aria-label="Entry type">{[['food','Food',Utensils],['training','Training',Dumbbell],['water','Water',Droplets],['weight','Weight',Scale]].map(([key,label,Icon])=><button key={key} aria-pressed={entryType===key} onClick={()=>setEntryType(key)} data-testid={`entry-type-${key}`}><Icon size={17}/>{label}</button>)}</div>
+            {entryType==='food' && <FoodEntry selectedDate={selectedDate} onFoodLogged={afterSave}/>}
+            {entryType==='training' && <TrainingLog selectedDate={selectedDate} onTrainingLogged={afterSave}/>}
+            {entryType==='water' && <WaterTracker selectedDate={selectedDate} totalWaterMl={totalWaterMl} onWaterLogged={fetchData} streak={waterStreak} expanded/>}
+            {entryType==='weight' && <WeightTracker selectedDate={selectedDate} weightKg={weightKg} onWeightLogged={afterSave}/>}
+          </section>}
+          {activeTab === "dashboard" && <>
+            <MacrosDashboard totals={totals} goals={goals} onOpenGoals={()=>setGoalsOpen(true)}/>
+            <div className="ft-essentials">
+              <WaterTracker selectedDate={selectedDate} totalWaterMl={totalWaterMl} onWaterLogged={fetchData} streak={waterStreak} onExpand={()=>openEntry('water')}/>
+              <section className="ft-card ft-small-card" data-testid="weight-summary"><div className="ft-section-head"><h2><Scale size={18}/>Weight</h2><button className="ft-icon-button" aria-label="Log weight" onClick={()=>openEntry('weight')}><Plus size={18}/></button></div><div className="ft-stat-number" data-testid="weight-summary-value">{weightKg ?? '—'}<span> kg</span></div><p className="ft-muted">{weightKg == null ? 'No measurement for this date' : 'Measurement for this date'}</p><button className="ft-text-button" onClick={()=>openEntry('weight')}>{weightKg == null ? 'Log weight' : 'Update measurement'}</button></section>
+              <section className="ft-card ft-small-card"><div className="ft-section-head"><h2><Dumbbell size={18}/>Training</h2><button className="ft-icon-button" aria-label="Log training" onClick={()=>openEntry('training')}><Plus size={18}/></button></div><div className="ft-stat-number">{totalTrainingMinutes}<span> min</span></div><p className="ft-muted">{trainings.length} {trainings.length===1?'session':'sessions'} logged</p><button className="ft-text-button" onClick={()=>openEntry('training')}>Add a workout</button></section>
             </div>
-            <div className="animate-slide-up stagger-4">
-              <TrainingLog selectedDate={selectedDate} onTrainingLogged={fetchData} />
-            </div>
-            <div className="animate-slide-up stagger-5">
-              <WeightTracker selectedDate={selectedDate} weightKg={weightKg} onWeightLogged={fetchData} />
-            </div>
-          </div>
-
-          {/* AI Coach */}
-          <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-5">
-            <CoachTips key={JSON.stringify([selectedDate, totals, goals, totalWaterMl, totalTrainingMinutes])} selectedDate={selectedDate} />
-          </div>
-
-          {/* Activity Feed */}
-          <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-6">
-            <ActivityFeed
-                foods={foods}
-                trainings={trainings}
-                onRefresh={fetchData}
-                selectedDate={selectedDate}
-            />
-          </div>
-        </div>
-        ) : (
-          <Reports selectedDate={selectedDate} />
-        )}
-      </div>
-
-      <DailyGoals
-        open={goalsOpen}
-        onOpenChange={setGoalsOpen}
-        goals={goals}
-        onGoalsUpdated={(newGoals) => {
-          setGoals(newGoals);
-          fetchData();
-        }}
-      />
+          </>}
+          <ActivityFeed foods={foods} trainings={trainings} onRefresh={fetchData} selectedDate={selectedDate}/>
+          {activeTab === "dashboard" && <details className="ft-review"><summary>Daily review <span>Compare your intake with your targets</span></summary><CoachTips key={JSON.stringify([selectedDate,totals,goals,totalWaterMl,totalTrainingMinutes])} selectedDate={selectedDate}/></details>}
+          {activeTab === "history" && <p className="ft-muted">Use the date picker or arrows above to browse your daily entries.</p>}
+        </div>}
+      </main>
     </div>
-  );
+    <DailyGoals open={goalsOpen} onOpenChange={setGoalsOpen} goals={goals} onGoalsUpdated={(newGoals)=>{setGoals(newGoals);fetchData();}}/>
+  </div>;
 }
-
 export default App;

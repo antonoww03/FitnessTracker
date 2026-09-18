@@ -1,74 +1,28 @@
 import React from "react";
-import { CircularProgress } from "./CircularProgress";
-import { Settings } from "lucide-react";
-import { Button } from "../components/ui/button";
-
-const MACRO_CONFIG = [
-  { key: "protein", label: "Protein", color: "#007AFF", unit: "g" },
-  { key: "fat", label: "Fat", color: "#FF9F0A", unit: "g" },
-  { key: "carbs", label: "Carbs", color: "#FF3B30", unit: "g" },
-  { key: "sugar", label: "Sugar", color: "#FF2D55", unit: "g" },
-  { key: "fiber", label: "Fiber", color: "#32D74B", unit: "g" },
-];
+import { Settings2 } from "lucide-react";
 
 export const MacrosDashboard = ({ totals, goals, onOpenGoals }) => {
-  const calorieProgress = goals.calories > 0
-    ? (totals.calories / goals.calories) * 100
-    : 0;
-
-  return (
-    <div className="ft-card p-5 md:p-6" data-testid="macros-dashboard">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white">
-          Daily Macros
-        </h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenGoals}
-          className="text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
-          aria-label="Edit daily goals"
-          data-testid="open-goals-button"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="flex flex-col items-center gap-6">
-        {/* Main calorie circle */}
-        <CircularProgress
-          size={180}
-          strokeWidth={10}
-          progress={calorieProgress}
-          color="#FFFFFF"
-          label="Calories"
-          value={totals.calories}
-          unit="kcal"
-          goal={goals.calories}
-        />
-
-        {/* Macro circles grid */}
-        <div className="grid grid-cols-3 xl:grid-cols-5 gap-3 w-full" data-testid="macro-circles-grid">
-          {MACRO_CONFIG.map((macro) => {
-            const val = totals[macro.key] || 0;
-            const goalVal = goals[macro.key] || 0;
-            const prog = goalVal > 0 ? (val / goalVal) * 100 : 0;
-            return (
-              <CircularProgress
-                key={macro.key}
-                size={72}
-                strokeWidth={5}
-                progress={prog}
-                color={macro.color}
-                label={macro.label}
-                value={val}
-                unit={macro.unit}
-                goal={goalVal}
-              />
-            );
-          })}
+  const progress = goals.calories > 0 ? Math.min(totals.calories / goals.calories, 1) : 0;
+  const remaining = goals.calories - totals.calories;
+  return <section className="ft-card ft-nutrition" data-testid="macros-dashboard">
+    <div className="ft-section-head"><div><span className="ft-eyebrow">Daily overview</span><h2>Nutrition</h2></div>
+      <button className="ft-secondary" onClick={onOpenGoals} aria-label="Edit daily goals" data-testid="open-goals-button"><Settings2 size={16}/>Goals</button></div>
+    <div className="ft-nutrition-body">
+      <div className="ft-calorie-block">
+        <div className="ft-calorie-ring" role="img" aria-label={`${Math.round(totals.calories)} of ${goals.calories} calories`}>
+          <svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="86" className="ft-ring-track"/><circle cx="100" cy="100" r="86" className="ft-ring-fill" strokeDasharray={540.35} strokeDashoffset={540.35*(1-progress)}/></svg>
+          <div><strong>{Math.round(totals.calories).toLocaleString()}</strong><span>kcal consumed</span></div>
         </div>
+        <p>{goals.calories > 0 ? <><b>{Math.abs(Math.round(remaining)).toLocaleString()}</b> kcal {remaining >= 0 ? 'remaining' : 'above target'}</> : 'No calorie target set'}</p>
+      </div>
+      <div className="ft-macro-list">
+        {[['protein','Protein'],['carbs','Carbohydrates'],['fat','Fat']].map(([key,label])=>{
+          const pct=goals[key]>0?Math.min(totals[key]/goals[key]*100,100):0;
+          return <div className="ft-macro" key={key}><div><span>{label}</span><span><b>{Math.round(totals[key])}</b><small> / {goals[key]} g</small></span></div>
+            <div className={`ft-track ft-${key}`} role="progressbar" aria-label={label} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${pct}%`}}/></div></div>;
+        })}
+        <div className="ft-secondary-macros">{[['sugar','Sugar'],['fiber','Fiber']].map(([key,label])=><div key={key}><span>{label}</span><b>{Math.round(totals[key])}<small> / {goals[key]} g</small></b></div>)}</div>
       </div>
     </div>
-  );
+  </section>;
 };

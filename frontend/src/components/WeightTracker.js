@@ -30,7 +30,7 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
 
   return (
     <div className="ft-card p-5" data-testid="weight-tracker">
-      <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-3">
+      <h2 className="font-body text-lg tracking-normal font-bold text-white mb-3">
         <Scale className="inline h-4 w-4 text-[#A0A0A0] mr-1.5 -mt-0.5" />
         Weight
       </h2>

@@ -20,13 +20,14 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
   const saveResponse = (path, method = 'POST') => page.waitForResponse(response => new URL(response.url()).pathname === `/api/${path}` && response.request().method() === method && response.ok());
   try {
     await page.goto(baseURL);
-    await page.getByTestId('food-entry').waitFor();
+    await page.getByTestId('macros-dashboard').waitFor();
     await page.getByTestId('date-picker-trigger').click();
     assert.equal(await page.getByRole('grid').count(), 1, 'Calendar must open without a runtime error');
     await page.keyboard.press('Escape');
     // A real browser flow uses today's date; remove only the exact records created below on completion.
     const marker = `E2E meal ${Date.now()}`;
     const initial = await (await page.request.get(`${baseURL}/api/summary?date=${new Date().toISOString().slice(0,10)}`)).json();
+    await page.getByTestId('add-entry-button').click();
     const meal = page.getByTestId('food-entry');
     await meal.getByTestId('food-description-input').fill(marker);
     await meal.getByRole('button', { name: 'Enter nutrition manually' }).click();
@@ -38,29 +39,37 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
     const food = await (await foodSaved).json();
     await page.getByRole('button', { name: `Delete ${marker}` }).waitFor();
     assert.equal(food.calories, 300);
+    await page.getByTestId('entry-panel').waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: 'Log training', exact: true }).click();
     await page.getByTestId('training-type-select').click();
     await page.getByRole('option', { name: 'Strength', exact: true }).click();
     await page.getByTestId('training-duration-input').fill('45');
     const trainingSaved = saveResponse('training');
     await page.getByTestId('log-training-button').click();
     const training = await (await trainingSaved).json();
+    await page.getByTestId('entry-panel').waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'Delete Strength', exact: true }).first().waitFor();
+    await page.getByTestId('add-entry-button').click();
     await page.getByTestId('food-description-input').fill('unsaved draft');
     const waterSaved = saveResponse('water');
     await page.getByTestId('water-tracker').getByRole('button', { name: '+500 ml', exact: true }).click();
     const water = await (await waterSaved).json();
     await waitFor(async () => (await page.getByTestId('water-streak').innerText()).startsWith('1 ') || !(await page.getByTestId('water-streak').innerText()).startsWith('0 '), 'Water streak did not refresh');
     assert.equal(await page.getByTestId('food-description-input').inputValue(), 'unsaved draft', 'Refreshing water must preserve food drafts');
+    await page.getByRole('button', { name: 'Close entry form' }).click();
+    await page.getByRole('button', { name: 'Log weight', exact: true }).first().click();
     await page.getByTestId('weight-input').fill('74.5');
     const weightSaved = saveResponse('weight');
     await page.getByTestId('save-weight-button').click(); await weightSaved;
-    await waitFor(async () => (await page.getByTestId('current-weight-display').innerText()).includes('74.5'), 'Weight did not refresh');
+    await page.getByTestId('entry-panel').waitFor({ state: 'hidden' });
+    await waitFor(async () => (await page.getByTestId('weight-summary-value').innerText()).includes('74.5'), 'Weight did not refresh');
     await page.getByTestId('open-goals-button').click();
     await page.getByTestId('goal-input-calories').fill('2800');
     await page.getByTestId('goal-input-sugar').fill('0');
     const goalsSaved = saveResponse('goals', 'PUT');
     await page.getByTestId('save-goals-button').click(); await goalsSaved;
     await page.getByTestId('daily-goals-dialog').waitFor({ state: 'hidden' });
+    await page.locator('summary').filter({ hasText: 'Daily review' }).click();
     await page.getByTestId('generate-tips-button').click();
     await page.getByTestId('coach-tips-list').waitFor();
     assert.match(await page.getByTestId('coach-tips-list').innerText(), /2800/);
@@ -77,7 +86,7 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
     await page.getByRole('button', { name: `Delete report ${food.date}` }).waitFor();
     await page.getByTestId('tab-dashboard').click();
     await page.getByTestId('next-day-button').click();
-    await page.getByTestId('food-entry').waitFor();
+    await page.getByTestId('macros-dashboard').waitFor();
     await waitFor(async () => (await page.getByRole('button', { name: `Delete ${marker}` }).count()) === 0, 'Old day data persisted after navigation');
     await page.getByTestId('prev-day-button').click();
     await page.getByRole('button', { name: `Delete ${marker}` }).waitFor();
@@ -91,7 +100,7 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
     await page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
     await page.unroute('**/api/summary?*');
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
-    await page.getByTestId('food-entry').waitFor();
+    await page.getByTestId('macros-dashboard').waitFor();
     for (const width of [390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow at ${width}px`);

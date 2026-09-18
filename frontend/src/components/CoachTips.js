@@ -48,14 +48,14 @@ export const CoachTips = ({ selectedDate }) => {
   return (
     <div className="ft-card p-5" data-testid="coach-tips">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white">
+        <h2 className="font-body text-lg tracking-normal font-bold text-white">
           <MessageCircle className="inline h-4 w-4 text-[#007AFF] mr-1.5 -mt-0.5" />
           Daily Review
         </h2>
         <Button
           onClick={generateTips}
           disabled={loading}
-          className="bg-[#007AFF] hover:bg-[#0062CC] text-white font-heading uppercase tracking-wider text-xs font-semibold h-8 px-3 rounded-md"
+          className="bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-xs font-semibold h-8 px-3 rounded-md"
           data-testid="generate-tips-button"
         >
           {loading ? (

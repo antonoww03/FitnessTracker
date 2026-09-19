@@ -61,7 +61,8 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "test:e2e": "node tests/functional.cjs"
+    "test:e2e": "node tests/functional.cjs",
+    "test:features": "node tests/features.cjs"
   },
   "browserslist": {
     "production": [

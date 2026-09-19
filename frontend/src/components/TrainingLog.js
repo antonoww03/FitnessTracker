@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import {t} from "@/lib/i18n";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -14,6 +15,9 @@ import { toast } from "sonner";
 
 import { API } from "@/lib/api";
 
+import {ExerciseEditor} from "./FeatureHub";
+import {format,subDays} from "date-fns";
+
 const TRAINING_TYPES = [
   "Strength",
   "Cardio",
@@ -28,6 +32,9 @@ const TRAINING_TYPES = [
 export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
   const [trainingType, setTrainingType] = useState("");
   const [duration, setDuration] = useState("");
+  const [exercises,setExercises]=useState([]);
+  const [previous,setPrevious]=useState(null);
+  useEffect(()=>{const c=new AbortController();axios.get(`${API}/history`,{params:{start:format(subDays(new Date(selectedDate+'T12:00:00'),366),'yyyy-MM-dd'),end:selectedDate,kind:'training'},signal:c.signal}).then(r=>setPrevious(r.data.find(x=>x.training_type===trainingType)||null)).catch(()=>setPrevious(null));return()=>c.abort()},[selectedDate,trainingType]);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -41,11 +48,11 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
       await axios.post(`${API}/training`, {
         training_type: trainingType,
         duration_minutes: Number(duration),
-        date: selectedDate,
+        date: selectedDate, exercises,
       });
       toast.success(`${trainingType} - ${duration}min logged`);
       setTrainingType("");
-      setDuration("");
+      setDuration(""); setExercises([]);
       onTrainingLogged();
     } catch (err) {
       toast.error("Failed to log training.");
@@ -56,9 +63,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
 
   return (
     <div className="ft-card p-5" data-testid="training-log">
-      <h2 className="font-body text-lg tracking-normal font-bold text-white mb-4">
-        Log Training
-      </h2>
+      <h2 className="font-body text-lg tracking-normal font-bold text-white mb-4">{t("Log Training")}</h2>
 
       <div className="space-y-3">
         <Select value={trainingType} onValueChange={setTrainingType}>
@@ -66,17 +71,17 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
             className="bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] h-10 font-body text-sm"
             data-testid="training-type-select"
           >
-            <SelectValue placeholder="Select training type" />
+            <SelectValue placeholder={t("Select training type")} />
           </SelectTrigger>
           <SelectContent className="bg-[#141414] border-[#2A2A2A]">
             {TRAINING_TYPES.map((type) => (
               <SelectItem
-                key={type}
-                value={type}
+                key={t(type)}
+                value={t(type)}
                 className="text-white hover:bg-[#2A2A2A] focus:bg-[#2A2A2A] focus:text-white font-body text-sm cursor-pointer"
                 data-testid={`training-type-${type.toLowerCase()}`}
               >
-                {type}
+                {t(type)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -84,7 +89,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
 
         <Input
           type="number"
-          placeholder="Duration (minutes)"
+          placeholder={t("Duration (minutes)")}
           value={duration}
           onChange={(e) => setDuration(e.target.value)}
           min="1"
@@ -94,6 +99,8 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
           data-testid="training-duration-input"
         />
 
+        <ExerciseEditor value={exercises} onChange={setExercises}/>
+        {trainingType && <div className="ft-muted"><strong>{t("Previous workout")}</strong>{previous?<><p>{previous.date} · {previous.duration_minutes} min</p>{previous.exercises?.map((x,i)=><p key={i}>{x.name}: {x.sets} × {x.reps} · {x.weight_kg} kg</p>)}</>:<p>{t("No previous workout")}</p>}</div>}
         <Button
           onClick={handleSubmit}
           disabled={saving || !trainingType || !duration}
@@ -104,9 +111,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : (
             <Dumbbell className="h-4 w-4 mr-2" />
-          )}
-          Log Training
-        </Button>
+          )}{t("Log Training")}</Button>
       </div>
     </div>
   );

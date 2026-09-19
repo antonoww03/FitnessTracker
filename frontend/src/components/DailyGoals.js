@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -57,12 +58,8 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
       <DialogContent className="bg-[#141414] border-[#2A2A2A] text-white max-w-md" data-testid="daily-goals-dialog">
         <DialogHeader>
           <DialogTitle className="font-body text-xl tracking-normal font-bold text-white flex items-center gap-2">
-            <Target className="h-5 w-5 text-[#007AFF]" />
-            Daily Goals
-          </DialogTitle>
-          <DialogDescription className="text-[#A0A0A0] font-body text-sm">
-            Set your daily macro targets
-          </DialogDescription>
+            <Target className="h-5 w-5 text-[#007AFF]" />{t("Daily Goals")}</DialogTitle>
+          <DialogDescription className="text-[#A0A0A0] font-body text-sm">{t("Set your daily macro targets")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-3 mt-2">
@@ -94,9 +91,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
           className="mt-4 w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md"
           data-testid="save-goals-button"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          Save Goals
-        </Button>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{t("Save Goals")}</Button>
       </DialogContent>
     </Dialog>
   );

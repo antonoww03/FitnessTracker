@@ -19,6 +19,9 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
   };
   const saveResponse = (path, method = 'POST') => page.waitForResponse(response => new URL(response.url()).pathname === `/api/${path}` && response.request().method() === method && response.ok());
   try {
+    const account = await page.request.post(`${baseURL}/api/auth/register`, {headers: {'X-Requested-With':'FitTrack'}, data: {username:`e2e-${Date.now()}`,password:`test-only-${Date.now()}-unique`} });
+    assert.equal(account.status(),200,'Registration must work; local HTTP requires FITTRACK_COOKIE_SECURE=0');
+    await page.context().setExtraHTTPHeaders({'X-Requested-With':'FitTrack'});
     await page.goto(baseURL);
     await page.getByTestId('macros-dashboard').waitFor();
     await page.getByTestId('date-picker-trigger').click();
@@ -76,14 +79,14 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
     const reportSaved = saveResponse('reports/save');
     await page.getByRole('button', { name: 'Save Day' }).click(); await reportSaved;
     await page.getByTestId('tab-reports').click();
-    await page.getByRole('button', { name: `Delete report ${food.date}` }).waitFor();
+    await page.getByTestId('reports').getByText(food.date, {exact:true}).waitFor();
     for (const format of ['CSV', 'PDF']) {
       const downloaded = page.waitForEvent('download');
       await page.getByRole('button', { name: `Export ${format}` }).click();
       assert.ok((await downloaded).suggestedFilename().endsWith(format.toLowerCase()));
     }
     await page.getByLabel('Report period').selectOption('week');
-    await page.getByRole('button', { name: `Delete report ${food.date}` }).waitFor();
+    await page.getByTestId('reports').getByText(food.date, {exact:true}).waitFor();
     await page.getByTestId('tab-dashboard').click();
     await page.getByTestId('next-day-button').click();
     await page.getByTestId('macros-dashboard').waitFor();

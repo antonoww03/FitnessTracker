@@ -28,6 +28,7 @@ let webpackConfig = {
       extends: ["plugin:react-hooks/recommended"],
       rules: {
         "react-hooks/rules-of-hooks": "error",
+        "no-undef": "error",
         "react-hooks/exhaustive-deps": "warn",
       },
     },

@@ -1,3 +1,19 @@
+# Current feature update — 2026-09-19
+
+The earlier audit below describes the first repair pass; the following changes supersede its single-user and snapshot-report limitations.
+
+Implemented: authenticated isolated accounts; per-entry editing; delete/undo; all-type date/filter history; weighed nutrition; saved single-food favorites and multi-food meals; copy-day; exercises/sets/reps/load and previous workout comparison; 7/30/90-day progress with rolling weight mean; configurable water target; BG/EN core interface and light/dark theme; draft navigation guards; live reports; per-user JSON backup/validated atomic restore; automatic SQLite backups and explicit operator migration of legacy records.
+
+Validation:
+- 51 backend tests passed, including cross-account access attempts, CSRF headers/origins, login/logout/rate limits, edits, live reports, undo conflicts, meals, copying, exercise validation, rolling means, backup validation/restore, startup backup integrity and legacy ownership.
+- Production frontend build passed; undefined identifiers now fail the build.
+- `npm run test:features` passed: save/log meal, edit, history filter, delete/undo, progress charts, unsaved-navigation guard, Bulgarian interface, light theme and water goal.
+- Updated browser E2E script for registration and live reports, but did **not** rerun this version in a real browser. Cloud browser policy blocks localhost and data URLs; no physical iPhone/Android test has been performed. Mobile CSS and touch sizes were implemented, not certified on-device.
+
+Deployment remains pending; no public server, real user account or off-site backup service was created. Default cookies require HTTPS (local HTTP can explicitly set FITTRACK_COOKIE_SECURE=0). Only seven local SQLite backups are retained; disk-loss recovery requires copying them to independent storage. Email password recovery is not integrated. Preview runs demo data in memory, with no real login, USDA, PDF backend or restore operation. Provider error messages may remain English.
+
+---
+
 # Functional audit — 2026-09-17
 
 Baseline: `78e84bd5b5215ba4a069d0eed27bb3366ab52e31`.

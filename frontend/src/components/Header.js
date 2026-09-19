@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React from "react";
 import { format } from "date-fns";
 import { Calendar } from "../components/ui/calendar";
@@ -83,9 +84,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
                   variant="ghost"
                   className="w-full text-xs text-[#007AFF] hover:bg-[#007AFF]/10 h-8 font-body"
                   data-testid="go-to-today-button"
-                >
-                  Go to Today
-                </Button>
+                >{t("Go to Today")}</Button>
               </div>
             )}
           </PopoverContent>

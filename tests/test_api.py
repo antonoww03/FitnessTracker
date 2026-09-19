@@ -19,8 +19,10 @@ FOOD = dict(date=DAY, food_name='Rice', food_description='100 g rice', calories=
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv('FITTRACK_AUTO_BACKUP','0')
     monkeypatch.setattr(server, 'DB_PATH', tmp_path / 'data.sqlite3')
     monkeypatch.delenv('USDA_API_KEY', raising=False)
+    monkeypatch.setenv('FITTRACK_AUTH_DISABLED', '1')
     with TestClient(server.app) as client:
         yield client
 
@@ -122,12 +124,12 @@ def test_reports_snapshots_filters_and_exports(client):
     assert client.get('/api/reports?period=wrong').status_code == 422
     client.post('/api/food', json=FOOD)
     report = client.get('/api/reports').json()[0]
-    assert report['totals']['calories'] == 130  # explicit snapshot, not a live total
+    assert report['totals']['calories'] == 260  # reports always reflect current entries
     assert report['weight_kg'] == 74
-    assert report['food_count'] == 1
+    assert report['food_count'] == 2
     exported = client.get(f'/api/export?format=csv&period=week&date={DAY}')
     rows = list(csv.DictReader(io.StringIO(exported.content.decode('utf-8-sig'))))
-    assert len(rows) == 2 and float(rows[0]['calories']) == 130
+    assert len(rows) == 2 and float(rows[0]['calories']) == 260
     pdf = client.get('/api/export?format=pdf')
     assert pdf.headers['content-type'] == 'application/pdf'
     assert pdf.content.startswith(b'%PDF-')

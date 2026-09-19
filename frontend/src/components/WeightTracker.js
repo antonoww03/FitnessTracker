@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React, { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -31,9 +32,7 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
   return (
     <div className="ft-card p-5" data-testid="weight-tracker">
       <h2 className="font-body text-lg tracking-normal font-bold text-white mb-3">
-        <Scale className="inline h-4 w-4 text-[#A0A0A0] mr-1.5 -mt-0.5" />
-        Weight
-      </h2>
+        <Scale className="inline h-4 w-4 text-[#A0A0A0] mr-1.5 -mt-0.5" />{t("Weight")}</h2>
 
       {weightKg !== null && weightKg !== undefined && (
         <div className="mb-3 text-center" data-testid="current-weight-display">
@@ -58,7 +57,7 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
           onClick={handleSave}
           disabled={saving || !weight}
           className="bg-[#007AFF] hover:bg-[#0062CC] text-white h-9 px-4 rounded-md"
-          aria-label="Save weight"
+          aria-label={t("Save weight")}
           data-testid="save-weight-button"
         >
           <Check className="h-4 w-4" />

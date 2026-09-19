@@ -1,4 +1,4 @@
-"""Single-user fitness API with durable SQLite storage."""
+"""Authenticated fitness API with durable, per-user SQLite storage."""
 from contextlib import contextmanager
 from datetime import date as Date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
@@ -11,10 +11,15 @@ import os
 import re
 import sqlite3
 import uuid
+import hashlib
+import secrets
+import time
+from contextvars import ContextVar
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
@@ -28,10 +33,16 @@ app = FastAPI(title='FitTrack API')
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
-    allow_credentials=False, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-    allow_headers=['Content-Type'],
+    allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
+    allow_headers=['Content-Type', 'X-Requested-With'],
 )
 api_router = APIRouter()
+CURRENT_USER = ContextVar("current_user", default="")
+
+def scoped(kind):
+    owner = CURRENT_USER.get()
+    return f"{owner}:{kind}" if owner else kind
+
 
 
 @contextmanager
@@ -42,6 +53,9 @@ def database():
         with connection:
             connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id TEXT NOT NULL, date TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(kind, id))')
             connection.execute('CREATE INDEX IF NOT EXISTS records_date ON records(kind, date)')
+            connection.execute('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL)')
+            connection.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL)')
+            connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, until REAL NOT NULL)')
             yield connection
     finally:
         connection.close()
@@ -53,14 +67,14 @@ def save(kind, payload, identifier=None):
     record.setdefault('timestamp', datetime.now(timezone.utc).isoformat())
     with database() as db:
         db.execute('INSERT INTO records VALUES (?, ?, ?, ?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload',
-                   (kind, record['id'], record.get('date', ''), json.dumps(record, allow_nan=False)))
+                   (scoped(kind), record['id'], record.get('date', ''), json.dumps(record, allow_nan=False)))
     return record
 
 
 def records(kind, day=None):
     with database() as db:
         query = 'SELECT payload FROM records WHERE kind=?'
-        params = [kind]
+        params = [scoped(kind)]
         if day is not None:
             query += ' AND date=?'
             params.append(str(day))
@@ -69,7 +83,7 @@ def records(kind, day=None):
 
 def remove(kind, identifier):
     with database() as db:
-        result = db.execute('DELETE FROM records WHERE kind=? AND id=?', (kind, identifier))
+        result = db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped(kind), identifier))
         if not result.rowcount:
             raise HTTPException(404, 'Entry not found')
     return {'ok': True}
@@ -103,6 +117,7 @@ class Goals(Model):
 
 
 class FoodLogCreate(Dated):
+    grams: Positive | None = None
     food_description: str = Field(min_length=1, max_length=2000)
     food_name: str = Field(min_length=1, max_length=2000)
     calories: NonNegative
@@ -113,7 +128,15 @@ class FoodLogCreate(Dated):
     fiber: NonNegative
 
 
+class Exercise(Model):
+    name: str = Field(min_length=1, max_length=120)
+    sets: int = Field(ge=1, le=100)
+    reps: int = Field(ge=1, le=1000)
+    weight_kg: NonNegative = 0
+
+
 class TrainingLogCreate(Dated):
+    exercises: list[Exercise] = Field(default_factory=list, max_length=100)
     training_type: Literal['Strength', 'Cardio', 'HIIT', 'Yoga', 'Swimming', 'Cycling', 'Running', 'Walking']
     duration_minutes: int = Field(gt=0, le=1440)
 
@@ -195,7 +218,7 @@ async def analyze_food(req: FoodAnalyzeRequest):
         raise HTTPException(504, 'Food lookup timed out. Please retry; no nutrition was saved.') from None
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         raise HTTPException(502, 'Food provider returned invalid data. Try again or enter nutrition manually.') from None
-    return {'food_name': '; '.join(names), **{k: round(v, 2) for k, v in result.items()}, 'source': 'USDA', 'estimated': True}
+    return {'food_name': '; '.join(names), **{k: round(v, 2) for k, v in result.items()}, 'source': 'USDA', 'estimated': True, 'grams': sum(g for g,q in parsed)}
 
 
 @api_router.post('/food')
@@ -241,7 +264,7 @@ def get_water(date: Date):
 @api_router.delete('/water')
 def reset_water(date: Date):
     with database() as db:
-        db.execute('DELETE FROM records WHERE kind=? AND date=?', ('water', str(date)))
+        db.execute('DELETE FROM records WHERE kind=? AND date=?', (scoped('water'), str(date)))
     return {'ok': True}
 
 
@@ -318,7 +341,8 @@ Period = Literal['week', 'month', 'year', 'all']
 @api_router.get('/reports')
 def get_reports(period: Period = 'all', date: Date | None = None):
     anchor = date or Date.today()
-    result = records('report')
+    days = {r['date'] for kind in ('food', 'training', 'water', 'weight', 'report') for r in records(kind)}
+    result = [live_report(Date.fromisoformat(day)) for day in sorted(days, reverse=True)]
     if period == 'week':
         start = anchor - timedelta(days=anchor.weekday())
         end = start + timedelta(days=6)
@@ -349,9 +373,14 @@ def coach_tips(date: Date):
             amount, goal = data['totals'][macro], data['goals'][macro]
             unit = 'kcal' if macro == 'calories' else 'g'
             tips.append({'type': macro, 'tip': f'{macro.capitalize()}: {amount:g} {unit} logged' + (f' against your {goal:g} {unit} target.' if goal else '. No target set.')})
-    tips.append({'type': 'water', 'tip': f"Water logged: {data['total_water_ml']:g} ml. The bottle display uses a 3000 ml reference."})
+    tips.append({'type': 'water', 'tip': f"Water logged: {data['total_water_ml']:g} ml. Daily target: {get_preferences()['water_goal_ml']:g} ml."})
     if data['total_training_minutes']:
         tips.append({'type': 'general', 'tip': f"Training logged: {data['total_training_minutes']} minutes."})
+    if get_preferences()['language'] == 'bg':
+        labels = dict(zip(MACROS, ('Калории', 'Протеин', 'Мазнини', 'Въглехидрати', 'Захари', 'Фибри')))
+        tips = [{'type': macro, 'tip': f"{labels[macro]}: {data['totals'][macro]:g} / {data['goals'][macro]:g} {'kcal' if macro == 'calories' else 'г'}."} for macro in MACROS]
+        tips.append({'type': 'water', 'tip': f"Вода: {data['total_water_ml']:g} / {get_preferences()['water_goal_ml']:g} мл."})
+        tips.append({'type': 'general', 'tip': f"Тренировки: {data['total_training_minutes']} минути."})
     return {'tips': tips, 'totals': data['totals'], 'water_ml': data['total_water_ml'], 'source': 'logged-data'}
 
 
@@ -376,11 +405,343 @@ def export_reports(format: str = 'csv', period: Period = 'all', date: Date | Non
         labels = ['Date', 'kcal', 'Protein g', 'Fat g', 'Carbs g', 'Sugar g', 'Fiber g', 'Water ml', 'Weight kg', 'Train min', 'Foods', 'Workouts']
         table = Table([labels] + [[str(r.get(c, '') if r.get(c) is not None else '') for c in columns] for r in rows], repeatRows=1)
         table.setStyle(TableStyle([('FONTSIZE', (0, 0), (-1, -1), 7), ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey), ('GRID', (0, 0), (-1, -1), .25, colors.grey)]))
-        document.build([Paragraph('FitTrack saved reports', getSampleStyleSheet()['Title']), Spacer(1, 12), table])
+        document.build([Paragraph('FitTrack live reports', getSampleStyleSheet()['Title']), Spacer(1, 12), table])
         body, media_type = output.getvalue(), 'application/pdf'
     else:
         raise HTTPException(400, 'Supported formats: csv, pdf')
     return Response(body, media_type=media_type, headers={'Content-Disposition': f'attachment; filename="fittrack-{period}.{format}"'})
 
 
+
+
+class Credentials(Model):
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+    username: str = Field(pattern=r'^[A-Za-z0-9_.-]{3,40}$')
+    password: str = Field(min_length=12, max_length=128)
+
+
+def password_hash(password, salt):
+    return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=2**15, r=8, p=1, maxmem=64*1024*1024).hex()
+
+
+def session_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+@app.middleware('http')
+async def authenticate(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith('/api/') or os.getenv('FITTRACK_AUTH_DISABLED') == '1':
+        return await call_next(request)
+    if request.method == 'OPTIONS':
+        return await call_next(request)
+    if request.method not in ('GET', 'HEAD'):
+        # Custom header cannot be sent cross-origin without an approved CORS preflight.
+        if request.headers.get('x-requested-with') != 'FitTrack':
+            return JSONResponse({'detail': 'Missing request protection header'}, status_code=403)
+        origin = request.headers.get('origin')
+        allowed = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+        if origin and origin != str(request.base_url).rstrip('/') and origin not in allowed:
+            return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
+    if path in ('/api/auth/login', '/api/auth/register'):
+        return await call_next(request)
+    token = request.cookies.get('fittrack_session', '')
+    with database() as db:
+        user = db.execute('SELECT user_id FROM sessions WHERE token=? AND expires>?', (session_hash(token), time.time())).fetchone()
+    if not user:
+        return JSONResponse({'detail': 'Please sign in'}, status_code=401)
+    marker = CURRENT_USER.set(user[0])
+    try:
+        response = await call_next(request)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    finally:
+        CURRENT_USER.reset(marker)
+
+
+def auth_attempt(request, username):
+    # Persistent limits shared across workers; never trust forwarded IP headers here.
+    keys = [f"ip:{request.client.host if request.client else 'unknown'}", f'user:{username}']
+    blocked = False
+    with database() as db:
+        db.execute('DELETE FROM attempts WHERE until<?', (time.time(),))
+        for key in keys:
+            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1', (key, time.time()+900))
+            blocked |= db.execute('SELECT count FROM attempts WHERE key=?', (key,)).fetchone()[0] > 20
+    if blocked:
+        raise HTTPException(429, 'Too many sign-in attempts. Try again in 15 minutes.')
+
+
+def start_session(user_id, username, response):
+    token = secrets.token_urlsafe(32)
+    with database() as db:
+        db.execute('DELETE FROM sessions WHERE expires<?', (time.time(),))
+        db.execute('INSERT INTO sessions VALUES (?,?,?)', (session_hash(token), user_id, time.time()+7*86400))
+    response.set_cookie('fittrack_session', token, max_age=7*86400, httponly=True, secure=os.getenv('FITTRACK_COOKIE_SECURE', '1') != '0', samesite='strict', path='/api')
+    response.headers['Cache-Control'] = 'no-store'
+    return {'id': user_id, 'username': username}
+
+
+@api_router.post('/auth/register')
+def register(body: Credentials, request: Request, response: Response):
+    username = body.username.lower()
+    auth_attempt(request, username)
+    salt, user_id = secrets.token_hex(16), str(uuid.uuid4())
+    hashed = password_hash(body.password, salt)
+    try:
+        with database() as db:
+            db.execute('INSERT INTO users VALUES (?,?,?,?)', (user_id, username, salt, hashed))
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, 'Username is unavailable') from None
+    return start_session(user_id, username, response)
+
+
+@api_router.post('/auth/login')
+def login(body: Credentials, request: Request, response: Response):
+    username = body.username.lower()
+    auth_attempt(request, username)
+    with database() as db:
+        user = db.execute('SELECT id,salt,password FROM users WHERE username=?', (username,)).fetchone()
+    candidate = password_hash(body.password, user[1] if user else '00'*16)
+    if not user or not secrets.compare_digest(candidate, user[2]):
+        raise HTTPException(401, 'Incorrect username or password')
+    return start_session(user[0], username, response)
+
+
+@api_router.get('/auth/me')
+def me():
+    with database() as db:
+        user = db.execute('SELECT id,username FROM users WHERE id=?', (CURRENT_USER.get(),)).fetchone()
+    return {'id': user[0], 'username': user[1]} if user else {'id': 'local', 'username': 'Local mode'}
+
+
+@api_router.post('/auth/logout')
+def logout(request: Request, response: Response):
+    with database() as db:
+        db.execute('DELETE FROM sessions WHERE token=?', (session_hash(request.cookies.get('fittrack_session', '')),))
+    response.delete_cookie('fittrack_session', path='/api')
+    return {'ok': True}
+
+
+class Preferences(Model):
+    water_goal_ml: float = Field(default=3000, ge=100, le=20000)
+    language: Literal['en', 'bg'] = 'en'
+    theme: Literal['dark', 'light'] = 'dark'
+
+
+@api_router.get('/preferences')
+def get_preferences():
+    rows = records('preferences')
+    return Preferences.model_validate({k: rows[0][k] for k in Preferences.model_fields}).model_dump() if rows else Preferences().model_dump()
+
+
+@api_router.put('/preferences')
+def preferences(body: Preferences):
+    save('preferences', body.model_dump(), 'settings')
+    return body
+
+
+KINDS = Literal['food', 'training', 'water', 'weight']
+MODELS = {'food': FoodLogCreate, 'training': TrainingLogCreate, 'water': WaterLogCreate, 'weight': WeightLogCreate}
+
+
+def validated(kind, body):
+    from pydantic import ValidationError
+    try:
+        return MODELS[kind].model_validate(body).model_dump()
+    except ValidationError:
+        raise HTTPException(422, 'Invalid entry values') from None
+
+
+@api_router.put('/entries/{kind}/{identifier}')
+def edit_entry(kind: KINDS, identifier: str, body: dict):
+    previous = next((r for r in records(kind) if r['id'] == identifier), None)
+    if previous is None:
+        raise HTTPException(404, 'Entry not found')
+    payload = validated(kind, body)
+    if payload['date'] != previous['date']:
+        raise HTTPException(422, 'Use copy to move an entry to another date')
+    return save(kind, {**payload, 'id': identifier, 'timestamp': previous['timestamp']})
+
+
+@api_router.get('/history')
+def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'water', 'weight'] = 'all'):
+    if end < start or (end-start).days > 366:
+        raise HTTPException(422, 'Choose a range of up to 367 days')
+    return sorted([{**r, 'kind': k} for k in MODELS if kind in ('all', k) for r in records(k) if str(start) <= r['date'] <= str(end)], key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
+
+
+@api_router.delete('/entries/{kind}/{identifier}')
+def trash_entry(kind: KINDS, identifier: str):
+    token = str(uuid.uuid4())
+    with database() as db:
+        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped(kind), identifier)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Entry not found')
+        payload = {'id': token, 'kind': kind, 'entry': json.loads(row[0]), 'expires': time.time()+86400}
+        db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped('trash'), token, '', json.dumps(payload)))
+        db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped(kind), identifier))
+    return {'undo_token': token}
+
+
+@api_router.post('/undo/{token}')
+def undo(token: str):
+    with database() as db:
+        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped('trash'), token)).fetchone()
+        if not row or json.loads(row[0])['expires'] < time.time():
+            raise HTTPException(404, 'Undo expired')
+        trash = json.loads(row[0]); item = trash['entry']
+        if db.execute('SELECT 1 FROM records WHERE kind=? AND id=?', (scoped(trash['kind']), item['id'])).fetchone():
+            raise HTTPException(409, 'A newer entry exists; it will not be overwritten')
+        db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped(trash['kind']), item['id'], item['date'], json.dumps(item)))
+        db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped('trash'), token))
+    return item
+
+
+class CopyDay(Model):
+    source: Date
+    target: Date
+    kinds: list[KINDS] = Field(default_factory=lambda: ['food', 'training'], min_length=1)
+
+
+@api_router.post('/copy-day')
+def copy_day(body: CopyDay):
+    if body.source == body.target:
+        raise HTTPException(422, 'Choose a different source date')
+    count = 0
+    with database() as db:
+        for kind in set(body.kinds):
+            for (raw,) in db.execute('SELECT payload FROM records WHERE kind=? AND date=?', (scoped(kind), str(body.source))).fetchall():
+                item = json.loads(raw); item.update(date=str(body.target), id=str(body.target) if kind=='weight' else str(uuid.uuid4()), timestamp=datetime.now(timezone.utc).isoformat())
+                if kind == 'weight' and db.execute('SELECT 1 FROM records WHERE kind=? AND id=?', (scoped(kind), item['id'])).fetchone():
+                    raise HTTPException(409, 'Target already has a weight measurement')
+                db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped(kind), item['id'], item['date'], json.dumps(item)))
+                count += 1
+    return {'copied': count}
+
+
+class Meal(Model):
+    name: str = Field(min_length=1, max_length=100)
+    foods: list[FoodLogCreate] = Field(min_length=1, max_length=50)
+
+
+@api_router.get('/meals')
+def meals():
+    return records('meal')
+
+
+@api_router.post('/meals')
+def create_meal(body: Meal):
+    return save('meal', body.model_dump())
+
+
+@api_router.delete('/meals/{identifier}')
+def delete_meal(identifier: str):
+    return remove('meal', identifier)
+
+
+@api_router.post('/meals/{identifier}/log')
+def log_meal(identifier: str, date: Date):
+    meal = next((r for r in records('meal') if r['id'] == identifier), None)
+    if not meal:
+        raise HTTPException(404, 'Meal not found')
+    with database() as db:
+        for item in meal['foods']:
+            item = {**item, 'date': str(date), 'id': str(uuid.uuid4()), 'timestamp': datetime.now(timezone.utc).isoformat()}
+            db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped('food'), item['id'], item['date'], json.dumps(item)))
+    return {'logged': len(meal['foods'])}
+
+
+def live_report(day):
+    data = summary(day)
+    return {**data, 'id': str(day), 'water_ml': data['total_water_ml'], 'training_minutes': data['total_training_minutes']}
+
+
+@api_router.get('/progress')
+def progress(start: Date, end: Date):
+    if end < start or (end-start).days > 366:
+        raise HTTPException(422, 'Choose a range of up to 367 days')
+    weights = {r['date']: r['weight_kg'] for r in records('weight')}
+    result = []
+    for offset in range((end-start).days+1):
+        day = start+timedelta(days=offset)
+        recent = [v for d,v in weights.items() if str(day-timedelta(days=6)) <= d <= str(day)]
+        result.append({**live_report(day), 'weight_average_7d': round(sum(recent)/len(recent), 2) if recent else None, 'weight_samples_7d': len(recent)})
+    return result
+
+
+@api_router.get('/backup')
+def backup():
+    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, 'goals', 'preferences', 'meal', 'report')}}
+    return Response(json.dumps(data), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="fittrack-backup.json"'})
+
+
+@api_router.post('/backup/restore')
+async def restore(request: Request):
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 5_000_000:
+            raise HTTPException(413, 'Backup must be smaller than 5 MB')
+    try:
+        body = json.loads(raw)
+        assert body['version'] == 1 and isinstance(body['records'], dict)
+        clean = []
+        allowed = {**MODELS, 'goals': Goals, 'preferences': Preferences, 'meal': Meal}
+        for kind, rows in body['records'].items():
+            assert kind in (*allowed, 'report') and isinstance(rows, list)
+            for row in rows:
+                if kind == 'report':
+                    value = {'date': str(Date.fromisoformat(row['date']))}
+                else:
+                    value = allowed[kind].model_validate({k: v for k,v in row.items() if k not in ('id','timestamp')}).model_dump()
+                identifier = value['date'] if kind in ('weight', 'report') else 'daily' if kind=='goals' else 'settings' if kind=='preferences' else str(row.get('id') or uuid.uuid4())
+                assert len(identifier) <= 100
+                value.update(id=identifier, timestamp=datetime.now(timezone.utc).isoformat())
+                clean.append((scoped(kind), identifier, value.get('date',''), json.dumps(value)))
+        assert len(clean) <= 20000
+    except (ValueError, KeyError, TypeError, AttributeError, AssertionError):
+        raise HTTPException(422, 'Invalid backup; no data changed') from None
+    # Merge by stable ID, never erase other entries; one transaction for the full file.
+    with database() as db:
+        db.executemany('INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload', clean)
+    return {'restored': len(clean)}
+
+
 app.include_router(api_router, prefix='/api')
+
+# Daily consistent SQLite backups, including accounts, retained locally for seven days.
+# An operator should copy this private directory to independent storage.
+@app.on_event('startup')
+async def start_backups():
+    import asyncio
+    import logging
+    if os.getenv('FITTRACK_AUTO_BACKUP', '1') != '1':
+        return
+    with database():
+        pass
+    async def loop():
+        from backend.maintenance import backup_database
+        directory = Path(os.getenv('FITTRACK_BACKUP_DIR', str(DB_PATH.parent / 'backups')))
+        while True:
+            try:
+                name = datetime.now(timezone.utc).strftime('fittrack-%Y%m%d-%H%M%S-%f.sqlite3')
+                await asyncio.to_thread(backup_database, directory / name)
+                for old in sorted(directory.glob('fittrack-*.sqlite3'), reverse=True)[7:]:
+                    old.unlink()
+            except Exception:
+                logging.getLogger('fittrack').exception('Automatic backup failed')
+            await asyncio.sleep(86400)
+    app.state.backup_task = asyncio.create_task(loop())
+
+
+@app.on_event('shutdown')
+async def stop_backups():
+    import asyncio
+    task = getattr(app.state, 'backup_task', None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

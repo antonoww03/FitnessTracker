@@ -116,6 +116,10 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
     console.log(
       "PASS: responsive widths, short viewport, service worker, offline reload and one-time sync.",
     );
+  } catch(error) {
+    await page.screenshot({path:path.join(__dirname,'../test-artifacts/failure.png'),fullPage:true});
+    console.log('Mobile failure layout',await page.evaluate(()=>{const e=[...document.querySelectorAll('label')].find(x=>x.textContent.includes('Enable offline on this device'))?.querySelector('input');const r=e?.getBoundingClientRect();return {viewport:{width:innerWidth,height:innerHeight,visual:visualViewport?.height,offset:visualViewport?.offsetTop},target:r?{x:r.x,y:r.y,width:r.width,height:r.height}:null,hit:r?document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,500):null}}));
+    throw error;
   } finally {
     await browser.close();
   }

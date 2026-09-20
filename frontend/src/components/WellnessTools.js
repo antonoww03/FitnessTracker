@@ -543,10 +543,12 @@ export function OfflinePanel() {
               !window.confirm(t("Delete pending offline entries?"))
             )
               return;
+            setOn(next);
             setBusy(true);
             try {
               await setOfflineEnabled(next);
             } catch {
+              setOn(offlineEnabled());
               toast.error(t("Offline storage unavailable"));
             } finally {
               setBusy(false);

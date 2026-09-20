@@ -64,6 +64,12 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByTestId("tool-settings").click();
     await page.getByLabel("Enable offline on this device").check();
+    await page.waitForFunction(() => {
+      const input = [...document.querySelectorAll("label")]
+        .find((x) => x.textContent.includes("Enable offline on this device"))
+        ?.querySelector("input");
+      return input?.checked && !input.disabled;
+    });
     await page.getByTestId("tab-dashboard").click();
     await page.getByTestId("macros-dashboard").waitFor();
     // Wait for authenticated API responses to reach the explicit local cache.
@@ -75,8 +81,11 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
             const db = r.result;
             const q = db.transaction("items").objectStore("items").getAll();
             q.onsuccess = () => {
-              const has = q.result.some((x) =>
-                x.key.includes(":cache:/api/summary"),
+              const has = ["summary", "food", "training", "streak/water"].every(
+                (path) =>
+                  q.result.some((x) =>
+                    x.key.includes(":cache:/api/" + path + "?"),
+                  ),
               );
               db.close();
               resolve(has);
@@ -116,9 +125,37 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
     console.log(
       "PASS: responsive widths, short viewport, service worker, offline reload and one-time sync.",
     );
-  } catch(error) {
-    await page.screenshot({path:path.join(__dirname,'../test-artifacts/failure.png'),fullPage:true});
-    console.log('Mobile failure layout',await page.evaluate(()=>{const e=[...document.querySelectorAll('label')].find(x=>x.textContent.includes('Enable offline on this device'))?.querySelector('input');const r=e?.getBoundingClientRect();return {viewport:{width:innerWidth,height:innerHeight,visual:visualViewport?.height,offset:visualViewport?.offsetTop},target:r?{x:r.x,y:r.y,width:r.width,height:r.height}:null,hit:r?document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,500):null}}));
+  } catch (error) {
+    await page.screenshot({
+      path: path.join(__dirname, "../test-artifacts/failure.png"),
+      fullPage: true,
+    });
+    console.log(
+      "Mobile failure layout",
+      await page.evaluate(() => {
+        const e = [...document.querySelectorAll("label")]
+          .find((x) => x.textContent.includes("Enable offline on this device"))
+          ?.querySelector("input");
+        const r = e?.getBoundingClientRect();
+        return {
+          viewport: {
+            width: innerWidth,
+            height: innerHeight,
+            visual: visualViewport?.height,
+            offset: visualViewport?.offsetTop,
+          },
+          target: r
+            ? { x: r.x, y: r.y, width: r.width, height: r.height }
+            : null,
+          hit: r
+            ? document
+                .elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+                ?.outerHTML.slice(0, 500)
+            : null,
+        };
+      }),
+    );
+    console.log("Mobile page state", await page.locator("body").innerText());
     throw error;
   } finally {
     await browser.close();

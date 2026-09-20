@@ -397,3 +397,8 @@ Object.assign(dictionary, {
   "Local save failed. Keep this page open until the workout is saved.":
     "Локалният запис е неуспешен. Не затваряй страницата, докато не запазиш тренировката.",
 });
+
+Object.assign(dictionary, {
+  "Could not prepare offline data. Keep the connection and retry.":
+    "Офлайн данните не са готови. Остани с интернет и опитай пак.",
+});

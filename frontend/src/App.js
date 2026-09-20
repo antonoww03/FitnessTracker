@@ -324,7 +324,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
                 }}
               />
               <DayGoalSettings onSaved={fetchData} />
-              <OfflinePanel />
+              <OfflinePanel selectedDate={selectedDate} />
               <RecoverySettings />
               <AccountSecurity user={user} onSignedOut={onSignedOut} />
             </div>

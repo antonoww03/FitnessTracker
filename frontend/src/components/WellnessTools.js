@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -487,7 +488,7 @@ export function DayGoalSettings({ onSaved }) {
     </form>
   );
 }
-export function OfflinePanel() {
+export function OfflinePanel({ selectedDate }) {
   const [items, setItems] = useState([]),
     [syncErrors, setSyncErrors] = useState([]),
     [on, setOn] = useState(offlineEnabled()),
@@ -547,9 +548,32 @@ export function OfflinePanel() {
             setBusy(true);
             try {
               await setOfflineEnabled(next);
+              if (next) {
+                const days = [
+                  ...new Set(
+                    [selectedDate, format(new Date(), "yyyy-MM-dd")].filter(
+                      Boolean,
+                    ),
+                  ),
+                ];
+                await Promise.all([
+                  ...days.flatMap((date) =>
+                    ["summary", "food", "training", "streak/water", "plan"].map(
+                      (path) =>
+                        axios.get(`${API}/${path}`, { params: { date } }),
+                    ),
+                  ),
+                  axios.get(`${API}/preferences`),
+                  axios.get(`${API}/programs`),
+                ]);
+              }
             } catch {
               setOn(offlineEnabled());
-              toast.error(t("Offline storage unavailable"));
+              toast.error(
+                t(
+                  "Could not prepare offline data. Keep the connection and retry.",
+                ),
+              );
             } finally {
               setBusy(false);
             }

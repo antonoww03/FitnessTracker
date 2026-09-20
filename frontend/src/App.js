@@ -55,7 +55,17 @@ import {
   SettingsView,
 } from "./components/FeatureHub";
 import { setLanguage, t, storage } from "./lib/i18n";
+import { TrainingStudio, DayPlanCard } from "./components/TrainingStudio";
+import {
+  RecipesView,
+  BodyMeasurements,
+  DayGoalSettings,
+  OfflinePanel,
+  RecoverySettings,
+  OfflineBadge,
+} from "./components/WellnessTools";
 function AppContent({ user, onLogout }) {
+  const [planRevision, setPlanRevision] = useState(0);
   const [preferences, setPreferences] = useState({
     water_goal_ml: 3000,
     language: storage.get("fittrack-language") || "en",
@@ -145,6 +155,14 @@ function AppContent({ user, onLogout }) {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    const synced = () => {
+      fetchData();
+      setPlanRevision((v) => v + 1);
+    };
+    window.addEventListener("fittrack-synced", synced);
+    return () => window.removeEventListener("fittrack-synced", synced);
+  }, [fetchData]);
   const openEntry = (type = "food") => {
     if (!leave()) return;
     dirty.current = false;
@@ -209,7 +227,7 @@ function AppContent({ user, onLogout }) {
           {[
             ["dashboard", "Today", LayoutDashboard],
             ["history", "History", History],
-            ["reports", "Reports", ChartNoAxesCombined],
+            ["training", "Training", ChartNoAxesCombined],
           ].map(([key, label, Icon]) => (
             <button
               key={key}
@@ -231,9 +249,17 @@ function AppContent({ user, onLogout }) {
         </nav>
         <main>
           <div className="ft-tools">
-            {["meals", "progress", "settings"].map((key) => (
+            {[
+              "meals",
+              "recipes",
+              "progress",
+              "body",
+              "reports",
+              "settings",
+            ].map((key) => (
               <button
                 key={key}
+                data-testid={key === "reports" ? "tab-reports" : `tool-${key}`}
                 className={activeTab === key ? "ft-primary" : "ft-secondary"}
                 onClick={() => {
                   if (!leave()) return;
@@ -246,18 +272,46 @@ function AppContent({ user, onLogout }) {
               </button>
             ))}
           </div>
-          {activeTab === "settings" ? (
-            <SettingsView
-              preferences={preferences}
-              onSave={(data) => {
-                applyPreferences(data);
+          <OfflineBadge
+            onOpen={() => {
+              if (leave()) {
+                dirty.current = false;
+                setEntryType(null);
+                setActiveTab("settings");
+              }
+            }}
+          />
+          {activeTab === "training" ? (
+            <TrainingStudio
+              user={user}
+              selectedDate={selectedDate}
+              onRefresh={fetchData}
+              onPlanChange={() => {
+                setPlanRevision((v) => v + 1);
                 fetchData();
               }}
-              user={user}
-              onLogout={() => {
-                if (leave()) onLogout();
-              }}
             />
+          ) : activeTab === "recipes" ? (
+            <RecipesView selectedDate={selectedDate} onRefresh={fetchData} />
+          ) : activeTab === "body" ? (
+            <BodyMeasurements key={selectedDate} selectedDate={selectedDate} />
+          ) : activeTab === "settings" ? (
+            <div className="ft-content">
+              <SettingsView
+                preferences={preferences}
+                onSave={(data) => {
+                  applyPreferences(data);
+                  fetchData();
+                }}
+                user={user}
+                onLogout={() => {
+                  if (leave()) onLogout();
+                }}
+              />
+              <DayGoalSettings onSaved={fetchData} />
+              <OfflinePanel />
+              <RecoverySettings />
+            </div>
           ) : activeTab === "progress" ? (
             <ProgressView selectedDate={selectedDate} />
           ) : activeTab === "meals" ? (
@@ -373,6 +427,14 @@ function AppContent({ user, onLogout }) {
               )}
               {activeTab === "dashboard" && (
                 <>
+                  <DayPlanCard
+                    key={selectedDate + planRevision}
+                    selectedDate={selectedDate}
+                    onChange={fetchData}
+                    onOpenTraining={() => {
+                      if (leave()) setActiveTab("training");
+                    }}
+                  />
                   <MacrosDashboard
                     totals={totals}
                     goals={goals}
@@ -504,7 +566,21 @@ function AppContent({ user, onLogout }) {
           )}
         </main>
       </div>
+      {!entryType && activeTab !== "settings" && (
+        <button
+          className="ft-floating-add"
+          aria-label={t("Add entry")}
+          data-testid="quick-add"
+          onClick={() => {
+            openEntry();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
+          <Plus size={22} />
+        </button>
+      )}
       <DailyGoals
+        selectedDate={selectedDate}
         open={goalsOpen}
         onOpenChange={setGoalsOpen}
         goals={goals}

@@ -57,6 +57,39 @@ const db = {
   weight: [{ id: today, date: today, weight_kg: 74.5 }],
   report: [],
   meal: [],
+  program: [
+    {
+      id: "demo-program",
+      name: "Back · Shoulders · Biceps",
+      weekdays: [(new Date().getDay() + 6) % 7],
+      exercises: [
+        {
+          name: "Lat pulldown",
+          sets: 3,
+          reps: 10,
+          weight_kg: 40,
+          rest_seconds: 90,
+        },
+        {
+          name: "Shoulder press",
+          sets: 3,
+          reps: 10,
+          weight_kg: 20,
+          rest_seconds: 90,
+        },
+        {
+          name: "Biceps curl",
+          sets: 3,
+          reps: 12,
+          weight_kg: 12,
+          rest_seconds: 60,
+        },
+      ],
+    },
+  ],
+  recipe: [],
+  measurements: [],
+  day_plan: [],
 };
 for (let i = 1; i < 14; i++) {
   const d = new Date();
@@ -74,6 +107,37 @@ for (let i = 1; i < 14; i++) {
     calories: 1900 + (i % 4) * 90,
   });
 }
+let dayGoals = null;
+function plan(day) {
+  const explicit = db.day_plan.find((r) => r.date === day);
+  const program = explicit
+    ? db.program.find((p) => p.id === explicit.program_id)
+    : db.program.find((p) =>
+        p.weekdays.includes((new Date(day + "T12:00:00").getDay() + 6) % 7),
+      );
+  const day_type = explicit?.day_type || (program ? "training" : "rest");
+  return {
+    date: day,
+    day_type,
+    program: program || null,
+    goals: dayGoals?.[day_type] || goals,
+  };
+}
+function recipeValues(r) {
+  const totals = Object.fromEntries(
+    macros.map((k) => [
+      k,
+      r.ingredients.reduce((v, i) => v + (i.grams * i.per100[k]) / 100, 0),
+    ]),
+  );
+  return {
+    ...r,
+    totals,
+    per_portion: Object.fromEntries(
+      macros.map((k) => [k, totals[k] / r.portions]),
+    ),
+  };
+}
 function summary(day) {
   const foods = db.food.filter((x) => x.date === day),
     trainings = db.training.filter((x) => x.date === day);
@@ -82,7 +146,7 @@ function summary(day) {
     totals: Object.fromEntries(
       macros.map((k) => [k, foods.reduce((sum, x) => sum + Number(x[k]), 0)]),
     ),
-    goals: { ...goals },
+    goals: { ...plan(day).goals },
     total_training_minutes: trainings.reduce(
       (sum, x) => sum + x.duration_minutes,
       0,
@@ -147,7 +211,75 @@ axios.defaults.adapter = async (config) => {
     fail(
       "Демо профил. Истинският вход е наличен само в приложението със сървър.",
     );
-  else if (path === "/preferences") {
+  else if (path === "/plan") {
+    if (method === "PUT") {
+      db.day_plan = db.day_plan.filter((r) => r.date !== body.date);
+      db.day_plan.push(body);
+    }
+    data = plan(body.date || day);
+  } else if (path === "/day-goals") {
+    if (method === "PUT") dayGoals = body;
+    data = dayGoals || { training: { ...goals }, rest: { ...goals } };
+  } else if (path === "/personal-records") {
+    const records = {};
+    for (const row of [...db.training].reverse())
+      for (const set of [...(row.sets_log || [])].reverse()) {
+        const key = set.name.toLowerCase();
+        const r =
+          records[key] ||
+          (records[key] = {
+            name: set.name,
+            max_weight_kg: 0,
+            max_reps: 0,
+            total_volume_kg: 0,
+            total_sets: 0,
+            last_date: row.date,
+            last_set: set,
+          });
+        r.max_weight_kg = Math.max(r.max_weight_kg, set.weight_kg);
+        r.max_reps = Math.max(r.max_reps, set.reps);
+        r.total_volume_kg += set.weight_kg * set.reps;
+        r.total_sets++;
+      }
+    data = Object.values(records);
+  } else if (/^\/(programs|recipes|measurements)(\/|$)/.test(path)) {
+    const [, group, id, action] = path.split("/");
+    const kind = {
+      programs: "program",
+      recipes: "recipe",
+      measurements: "measurements",
+    }[group];
+    if (action === "log") {
+      const recipe = recipeValues(db.recipe.find((r) => r.id === id));
+      data = {
+        id: "recipe-food-" + ++counter,
+        date: body.date,
+        food_name: recipe.name,
+        grams:
+          (recipe.ingredients.reduce((v, i) => v + i.grams, 0) *
+            body.portions) /
+          recipe.portions,
+        ...Object.fromEntries(
+          macros.map((k) => [k, recipe.per_portion[k] * body.portions]),
+        ),
+      };
+      db.food.push(data);
+    } else if (method === "GET")
+      data = db[kind].map((r) => (kind === "recipe" ? recipeValues(r) : r));
+    else if (method === "DELETE") {
+      db[kind] = db[kind].filter(
+        (r) => (kind === "measurements" ? r.date : r.id) !== id,
+      );
+      data = { ok: true };
+    } else {
+      data = { ...body, id: id || "advanced-" + ++counter };
+      if (kind === "measurements")
+        db[kind] = db[kind].filter((r) => r.date !== body.date);
+      else if (id) db[kind] = db[kind].filter((r) => r.id !== id);
+      db[kind].push(data);
+      if (kind === "recipe") data = recipeValues(data);
+    }
+  } else if (path === "/preferences") {
     if (method === "PUT") preferences = { ...body };
     data = { ...preferences };
   } else if (path === "/history") {
@@ -245,7 +377,10 @@ axios.defaults.adapter = async (config) => {
     );
   } else if (path === "/summary") data = summary(day);
   else if (path === "/goals") {
-    if (method === "PUT") goals = { ...body };
+    if (method === "PUT") {
+      if (dayGoals) dayGoals[plan(day).day_type] = { ...body };
+      else goals = { ...body };
+    }
     data = { ...goals };
   } else if (path === "/streak/water") {
     const days = new Set(db.water.map((x) => x.date));

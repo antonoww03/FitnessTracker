@@ -8,7 +8,13 @@ import { format, subDays } from "date-fns";
 export const MACROS = ["calories", "protein", "fat", "carbs", "sugar", "fiber"];
 const fields = {
   food: ["food_name", "food_description", "grams", ...MACROS],
-  training: ["training_type", "duration_minutes", "exercises"],
+  training: [
+    "training_type",
+    "duration_minutes",
+    "exercises",
+    "sets_log",
+    "program_name",
+  ],
   water: ["amount_ml"],
   weight: ["weight_kg"],
 };
@@ -130,7 +136,7 @@ export function EntryEditor({ entry, onClose, onSave }) {
         {t("Edit")} · {t(entry.kind[0].toUpperCase() + entry.kind.slice(1))}
       </h2>
       {fields[entry.kind]
-        .filter((k) => k !== "exercises")
+        .filter((k) => !["exercises", "sets_log", "program_name"].includes(k))
         .map((k) => (
           <label key={k}>
             {t(names[k] || k)}
@@ -196,12 +202,48 @@ export function EntryEditor({ entry, onClose, onSave }) {
             )}
           </label>
         ))}
-      {entry.kind === "training" && (
+      {entry.kind === "training" && !value.sets_log?.length && (
         <ExerciseEditor
           value={value.exercises}
           onChange={(exercises) => setValue({ ...value, exercises })}
         />
       )}
+      {entry.kind === "training" &&
+        value.sets_log?.map((row, i) => (
+          <div className="ft-row" key={i}>
+            {["name", "reps", "weight_kg"].map((k) => (
+              <label key={k}>
+                {t(
+                  { name: "Exercise", reps: "Reps", weight_kg: "Load (kg)" }[k],
+                )}
+                <input
+                  required
+                  type={k === "name" ? "text" : "number"}
+                  min={k === "reps" ? 1 : 0}
+                  max={k === "name" ? undefined : 1000}
+                  step={k === "weight_kg" ? "any" : 1}
+                  value={row[k]}
+                  onChange={(e) =>
+                    setValue({
+                      ...value,
+                      sets_log: value.sets_log.map((r, j) =>
+                        i === j
+                          ? {
+                              ...r,
+                              [k]:
+                                k === "name"
+                                  ? e.target.value
+                                  : Number(e.target.value),
+                            }
+                          : r,
+                      ),
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        ))}
       <div className="ft-row">
         <button disabled={busy} className="ft-primary">
           {t("Save")}
@@ -335,7 +377,8 @@ export function HistoryView({ selectedDate, onRefresh }) {
               <div className="ft-history-row" key={row.kind + row.id}>
                 <div>
                   <strong>
-                    {row.food_name ||
+                    {row.program_name ||
+                      row.food_name ||
                       t(
                         row.training_type ||
                           row.kind[0].toUpperCase() + row.kind.slice(1),
@@ -351,6 +394,11 @@ export function HistoryView({ selectedDate, onRefresh }) {
                           ? `${row.amount_ml} ml`
                           : `${row.weight_kg} kg`}
                   </p>
+                  {row.sets_log?.map((ex, i) => (
+                    <p className="ft-muted" key={"set-" + i}>
+                      {ex.name}: {ex.reps} × {ex.weight_kg} kg
+                    </p>
+                  ))}
                   {row.exercises?.map((ex, i) => (
                     <p className="ft-muted" key={i}>
                       {ex.name}: {ex.sets} × {ex.reps} · {ex.weight_kg} kg
@@ -550,7 +598,7 @@ export function MealsView({ selectedDate, foods, onRefresh }) {
     </div>
   );
 }
-function Chart({ rows, value, title, unit }) {
+export function Chart({ rows, value, title, unit }) {
   const chartRef = useRef(null);
   const [width, setWidth] = useState(650);
   useEffect(() => {

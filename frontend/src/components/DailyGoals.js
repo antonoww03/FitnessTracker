@@ -24,7 +24,7 @@ const GOAL_FIELDS = [
   { key: "fiber", label: "Fiber", unit: "g", color: "#32D74B" },
 ];
 
-export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
+export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated, selectedDate }) => {
   const [formGoals, setFormGoals] = useState(goals);
   const [saving, setSaving] = useState(false);
 
@@ -42,7 +42,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated }) => {
     }
     setSaving(true);
     try {
-      const res = await axios.put(`${API}/goals`, Object.fromEntries(Object.entries(formGoals).map(([key, value]) => [key, Number(value)])));
+      const res = await axios.put(`${API}/goals`, Object.fromEntries(Object.entries(formGoals).map(([key, value]) => [key, Number(value)])), {params:{date:selectedDate}});
       onGoalsUpdated(res.data);
       toast.success("Goals updated");
       onOpenChange(false);

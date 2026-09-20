@@ -114,3 +114,15 @@ Migration refuses a target account that already has data. Full disaster recovery
 There is no email password-reset integration yet. The inline preview uses a disposable demo account and an in-memory adapter; it does not create real accounts or persist data on a server. PDF and backup restore require the live backend. `frontend/preview/index.jsx` is separate from the production entry point.
 
 The feature smoke suite bundles the real React source against the offline demo adapter with pinned esbuild 0.25.10 (downloaded by npx on first use) and runs DOM interactions with JSDOM. It does not substitute for a real-device layout test.
+
+## Programs, recipes, measurements and offline use
+
+Training supports saved programs with weekday schedules, individual completed sets, a rest timer, previous results and personal records. An unfinished workout is stored on the current device until saved or discarded. History can correct completed reps and load; records are recalculated from saved sessions. Timer vibration is best effort while the app is active, not a background alarm.
+
+Recipes calculate nutrition from ingredient weights and per-100 g values, then log any number of portions. Body measurements track waist, chest, arm and thigh by date. Settings defines separate training/rest nutrition targets; Today selects the day's type and program.
+
+The production build includes a manifest and service worker. Serve it over HTTPS (or local loopback for development). Open it online first, enable offline storage in Settings, and visit the screens to cache their data. Offline food/water/weight/training writes enter a per-account IndexedDB queue. Cached totals reflect the last successful fetch until synchronization. Programs, recipes, measurements, edits and deletes require connectivity. Queue retries use server-side operation IDs to avoid duplicate writes. Review or delete pending entries in Settings; signing out removes cached personal data and the unfinished workout from this device. Device storage is not an encrypted backup.
+
+Registration displays a recovery code once. Existing accounts can generate one in Settings after entering their password; generating another invalidates the old code. Forgotten-password recovery requires the username and this code, consumes it and revokes existing sessions. There is no email delivery integration. Save the code privately; generate a fresh one after use.
+
+Validation: `python -m pytest tests -q`, `npm run test:features --prefix frontend`, `npm run test:offline --prefix frontend`, and `npm run build --prefix frontend`. DOM/IndexedDB simulations cover interactions and queue isolation. Installed PWA behavior, screen-locked timers and physical-phone layout still need device validation.

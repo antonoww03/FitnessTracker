@@ -34,10 +34,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
     allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-    allow_headers=['Content-Type', 'X-Requested-With'],
+    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID'],
 )
 api_router = APIRouter()
 CURRENT_USER = ContextVar("current_user", default="")
+OPERATION_ID = ContextVar("operation_id", default=None)
 
 def scoped(kind):
     owner = CURRENT_USER.get()
@@ -56,6 +57,7 @@ def database():
             connection.execute('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL)')
             connection.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL)')
             connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, until REAL NOT NULL)')
+            connection.execute('CREATE TABLE IF NOT EXISTS operations (owner TEXT NOT NULL, op TEXT NOT NULL, digest TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(owner, op))')
             yield connection
     finally:
         connection.close()
@@ -66,8 +68,17 @@ def save(kind, payload, identifier=None):
     record.setdefault('id', identifier or str(uuid.uuid4()))
     record.setdefault('timestamp', datetime.now(timezone.utc).isoformat())
     with database() as db:
+        operation = OPERATION_ID.get() if kind in ('food','training','water','weight') else None
+        digest = hashlib.sha256(json.dumps([kind,payload],sort_keys=True).encode()).hexdigest()
+        if operation:
+            db.execute('BEGIN IMMEDIATE')
+            previous = db.execute('SELECT digest,response FROM operations WHERE owner=? AND op=?',(CURRENT_USER.get(),operation)).fetchone()
+            if previous:
+                if previous[0] != digest: raise HTTPException(409,'Operation ID already used with different data')
+                return json.loads(previous[1])
         db.execute('INSERT INTO records VALUES (?, ?, ?, ?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload',
                    (scoped(kind), record['id'], record.get('date', ''), json.dumps(record, allow_nan=False)))
+        if operation: db.execute('INSERT INTO operations VALUES (?,?,?,?)',(CURRENT_USER.get(),operation,digest,json.dumps(record)))
     return record
 
 
@@ -135,7 +146,15 @@ class Exercise(Model):
     weight_kg: NonNegative = 0
 
 
+class CompletedSet(Model):
+    name: str = Field(min_length=1, max_length=120)
+    reps: int = Field(ge=1, le=1000)
+    weight_kg: float = Field(ge=0, le=1000)
+
+
 class TrainingLogCreate(Dated):
+    sets_log: list[CompletedSet] = Field(default_factory=list, max_length=1500)
+    program_name: str | None = Field(default=None, max_length=100)
     exercises: list[Exercise] = Field(default_factory=list, max_length=100)
     training_type: Literal['Strength', 'Cardio', 'HIIT', 'Yoga', 'Swimming', 'Cycling', 'Running', 'Walking']
     duration_minutes: int = Field(gt=0, le=1440)
@@ -309,7 +328,13 @@ def get_goals():
 
 
 @api_router.put('/goals')
-def update_goals(goals: Goals):
+def update_goals(goals: Goals, date: Date | None = None):
+    if date is not None and records('day_goals'):
+        from backend.advanced import plan, day_goals
+        value = day_goals()
+        value[plan(date)['day_type']] = goals.model_dump()
+        save('day_goals', value, 'settings')
+        return goals
     save('goals', goals.model_dump(), identifier='daily')
     return goals
 
@@ -320,7 +345,7 @@ def summary(date: Date):
     weight = get_weight(date)
     return {
         'date': str(date), 'totals': {key: round(sum(f[key] for f in foods), 2) for key in MACROS},
-        'goals': get_goals(), 'total_training_minutes': sum(t['duration_minutes'] for t in trainings),
+        'goals': goals_for_day(date), 'total_training_minutes': sum(t['duration_minutes'] for t in trainings),
         'total_water_ml': sum(w['amount_ml'] for w in waters), 'weight_kg': weight['weight_kg'] if weight else None,
         'food_count': len(foods), 'training_count': len(trainings),
     }
@@ -443,13 +468,17 @@ async def authenticate(request: Request, call_next):
         allowed = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
         if origin and origin != str(request.base_url).rstrip('/') and origin not in allowed:
             return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
-    if path in ('/api/auth/login', '/api/auth/register'):
+    if path in ('/api/auth/login', '/api/auth/register', '/api/auth/reset-password'):
         return await call_next(request)
     token = request.cookies.get('fittrack_session', '')
     with database() as db:
         user = db.execute('SELECT user_id FROM sessions WHERE token=? AND expires>?', (session_hash(token), time.time())).fetchone()
     if not user:
         return JSONResponse({'detail': 'Please sign in'}, status_code=401)
+    operation = request.headers.get('x-operation-id') if request.method == 'POST' else None
+    if operation and not re.fullmatch(r'[A-Za-z0-9-]{16,80}',operation):
+        return JSONResponse({'detail':'Invalid operation ID'},status_code=422)
+    op_marker = OPERATION_ID.set(operation)
     marker = CURRENT_USER.set(user[0])
     try:
         response = await call_next(request)
@@ -457,6 +486,7 @@ async def authenticate(request: Request, call_next):
         return response
     finally:
         CURRENT_USER.reset(marker)
+        OPERATION_ID.reset(op_marker)
 
 
 def auth_attempt(request, username):
@@ -493,7 +523,8 @@ def register(body: Credentials, request: Request, response: Response):
             db.execute('INSERT INTO users VALUES (?,?,?,?)', (user_id, username, salt, hashed))
     except sqlite3.IntegrityError:
         raise HTTPException(409, 'Username is unavailable') from None
-    return start_session(user_id, username, response)
+    from backend.advanced import issue_recovery
+    return {**start_session(user_id, username, response), "recovery_code": issue_recovery(user_id)}
 
 
 @api_router.post('/auth/login')
@@ -672,7 +703,7 @@ def progress(start: Date, end: Date):
 
 @api_router.get('/backup')
 def backup():
-    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, 'goals', 'preferences', 'meal', 'report')}}
+    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, *ADVANCED_MODELS, 'goals', 'preferences', 'meal', 'report')}}
     return Response(json.dumps(data), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="fittrack-backup.json"'})
 
 
@@ -687,7 +718,7 @@ async def restore(request: Request):
         body = json.loads(raw)
         assert body['version'] == 1 and isinstance(body['records'], dict)
         clean = []
-        allowed = {**MODELS, 'goals': Goals, 'preferences': Preferences, 'meal': Meal}
+        allowed = {**MODELS, **ADVANCED_MODELS, 'goals': Goals, 'preferences': Preferences, 'meal': Meal}
         for kind, rows in body['records'].items():
             assert kind in (*allowed, 'report') and isinstance(rows, list)
             for row in rows:
@@ -695,7 +726,7 @@ async def restore(request: Request):
                     value = {'date': str(Date.fromisoformat(row['date']))}
                 else:
                     value = allowed[kind].model_validate({k: v for k,v in row.items() if k not in ('id','timestamp')}).model_dump()
-                identifier = value['date'] if kind in ('weight', 'report') else 'daily' if kind=='goals' else 'settings' if kind=='preferences' else str(row.get('id') or uuid.uuid4())
+                identifier = value['date'] if kind in ('weight', 'report', 'measurements', 'day_plan') else 'daily' if kind=='goals' else 'settings' if kind in ('preferences','day_goals') else str(row.get('id') or uuid.uuid4())
                 assert len(identifier) <= 100
                 value.update(id=identifier, timestamp=datetime.now(timezone.utc).isoformat())
                 clean.append((scoped(kind), identifier, value.get('date',''), json.dumps(value)))
@@ -708,7 +739,13 @@ async def restore(request: Request):
     return {'restored': len(clean)}
 
 
+def goals_for_day(day):
+    from backend.advanced import plan
+    return plan(day)['goals']
+
+from backend.advanced import router as advanced_router, ADVANCED_MODELS
 app.include_router(api_router, prefix='/api')
+app.include_router(advanced_router, prefix='/api')
 
 # Daily consistent SQLite backups, including accounts, retained locally for seven days.
 # An operator should copy this private directory to independent storage.

@@ -41,6 +41,9 @@ const dom = new JSDOM(html, {
   pretendToBeVisual: true,
   virtualConsole: vc,
   beforeParse(w) {
+    Object.defineProperty(w, "crypto", {
+      value: require("node:crypto").webcrypto,
+    });
     w.matchMedia = () => ({
       matches: false,
       addListener() {},
@@ -53,6 +56,7 @@ const dom = new JSDOM(html, {
       unobserve() {}
       disconnect() {}
     };
+    w.scrollTo = () => {};
     w.HTMLElement.prototype.scrollIntoView = function () {};
   },
 });
@@ -137,6 +141,42 @@ async function input(el, value) {
   assert(id("food-entry"), "Draft navigation blocked");
   w.confirm = () => true;
   await click(d.querySelector('[aria-label="Close entry form"]'));
+  await click(id("tab-training"));
+  await click(btn("Start workout"));
+  assert(id("active-workout"));
+  await click(btn("Done", id("active-workout")));
+  assert(id("active-workout").textContent.includes("Skip rest"));
+  await click(btn("Finish workout"));
+  assert(!id("active-workout"));
+  assert(
+    d.getElementById("fittrack-preview-app").textContent.includes("400 kg"),
+  );
+  await click(btn("New program"));
+  const programForm = d.querySelector("form");
+  await input(programForm.querySelector("input"), "Leg day");
+  await input(programForm.querySelector(".ft-exercise-plan input"), "Squat");
+  await click(btn("Save", programForm));
+  assert(
+    d.getElementById("fittrack-preview-app").textContent.includes("Leg day"),
+  );
+  await click(btn("Recipes"));
+  await click(btn("New recipe"));
+  const recipeForm = d.querySelector("form");
+  const recipeInputs = recipeForm.querySelectorAll("input");
+  await input(recipeInputs[0], "Oats");
+  await input(recipeInputs[1], "2");
+  await input(recipeInputs[2], "Rolled oats");
+  await input(recipeInputs[4], "380");
+  await click(btn("Save", recipeForm));
+  assert(
+    d.getElementById("fittrack-preview-app").textContent.includes("190 kcal"),
+  );
+  await click(btn("Log meal"));
+  await click(btn("Body"));
+  await input(d.querySelector("input[type=number]"), "82");
+  await click(btn("Save"));
+  assert(d.querySelector(".ft-chart"));
+  assert(d.getElementById("fittrack-preview-app").textContent.includes("82"));
   await click(btn("Settings"));
   const selects = d.querySelectorAll("select");
   await input(selects[0], "bg");
@@ -155,7 +195,7 @@ async function input(el, value) {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: saved meal/logging, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target.",
+    "PASS: saved meal/logging, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target, programs, completed sets, rest timer, records, recipes and measurements.",
   );
   dom.window.close();
 })().catch((e) => {

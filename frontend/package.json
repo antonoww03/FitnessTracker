@@ -62,7 +62,8 @@
     "build": "craco build",
     "test": "craco test",
     "test:e2e": "node tests/functional.cjs",
-    "test:features": "node tests/features.cjs"
+    "test:features": "node tests/features.cjs",
+    "test:offline": "node tests/offline.cjs"
   },
   "browserslist": {
     "production": [
@@ -85,8 +86,9 @@
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.4",
     "eslint-plugin-react-hooks": "5.2.0",
+    "fake-indexeddb": "^6.2.4",
+    "playwright": "1.62.1",
     "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "playwright": "1.62.1"
+    "tailwindcss": "^3.4.17"
   }
 }

@@ -57,3 +57,9 @@ Scope: every active application component and API call, current backend routes, 
 - The app remains single-user with no login/user isolation. Public exposure requires protecting the frontend and API. CORS does not provide authentication.
 - CRA/ESLint 8 and some transitive build dependencies are legacy and emit deprecation notices. This is a functional repair, not a complete toolchain migration or security certification.
 - No merge or deployment was performed as part of this audit.
+
+## Training and offline expansion
+
+Added program scheduling, completed-set sessions and editing, rest timers, derived records/volume, recipes with portion scaling, body measurements, daily training/rest goals, PWA shell caching and opt-in per-account offline writes. Recovery uses single-use hashed codes and invalidates sessions after a reset. Offline POST replay is transactionally deduplicated per account and operation ID; differing payload reuse returns 409. Delayed responses from a prior account do not populate the current account's cache.
+
+Validation includes 57 backend tests plus React DOM and IndexedDB queue simulations. The inline demo uses the actual components with an in-memory adapter. No hosting deployment or real installed-device verification is implied. Run a final phone/PWA acceptance check after deployment.

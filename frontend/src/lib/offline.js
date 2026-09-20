@@ -3,6 +3,12 @@ import { storage } from "./i18n";
 let user = null,
   working = false,
   clearing = false;
+const failures = new Map();
+export const syncStatus = () => ({
+  working,
+  errors: [...failures.values()],
+  lastUpdated: user ? storage.get(`fittrack-updated:${user.id}`) : null,
+});
 const listeners = new Set();
 export const offlineChanged = () => listeners.forEach((f) => f());
 export function subscribeOffline(fn) {
@@ -44,11 +50,18 @@ export const offlineEnabled = () => Boolean(enabled());
 export async function setOfflineEnabled(value) {
   if (!user) return;
   storage.set(`offline-enabled:${user.id}`, value ? "1" : "0");
-  if (value) await put("account", user);
-  else await clearOffline();
+  if (value) {
+    try {
+      await put("account", user);
+    } catch (e) {
+      storage.set(`offline-enabled:${user.id}`, "0");
+      throw e;
+    }
+  } else await clearOffline();
   offlineChanged();
 }
 export function setOfflineUser(value) {
+  if (user?.id !== value?.id) failures.clear();
   user = value;
   if (enabled()) put("account", value).catch(() => {});
   offlineChanged();
@@ -60,9 +73,11 @@ export async function cachedAccount() {
     return null;
   }
 }
-export async function clearOffline() {
-  const previous = user;
+export async function clearOffline(ownerId = user?.id) {
+  const previous = ownerId ? { id: ownerId } : null;
   clearing = true;
+  failures.clear();
+  if (previous) storage.set(`fittrack-updated:${previous.id}`, "");
   try {
     const all = await transaction((s) => s.getAll());
     for (const r of all)
@@ -105,6 +120,7 @@ const writable = (config) =>
 export async function syncOffline() {
   if (working || !user || !navigator.onLine) return;
   working = true;
+  offlineChanged();
   const owner = user.id;
   try {
     for (const item of await queue()) {
@@ -129,7 +145,7 @@ export async function syncOffline() {
       }
     }
   } finally {
-    ((working = false), (clearing = false));
+    working = false;
     offlineChanged();
     window.dispatchEvent(new Event("fittrack-synced"));
   }
@@ -154,6 +170,19 @@ export function installOffline() {
     async (response) => {
       const config = response.config;
       if (
+        config.offlineOwner === user?.id &&
+        user &&
+        !config.url.includes("/auth/")
+      ) {
+        failures.delete(config.url);
+        if (
+          config.method === "get" &&
+          new URL(config.url, location.origin).pathname.endsWith("/summary")
+        )
+          storage.set(`fittrack-updated:${user.id}`, new Date().toISOString());
+        offlineChanged();
+      }
+      if (
         enabled() &&
         config.offlineOwner === user.id &&
         config.method === "get" &&
@@ -167,7 +196,22 @@ export function installOffline() {
       return response;
     },
     async (error) => {
+      if (axios.isCancel(error)) return Promise.reject(error);
       const config = error.config;
+      if (
+        config &&
+        user &&
+        config.offlineOwner === user.id &&
+        !config.url.includes("/auth/")
+      ) {
+        failures.set(
+          config.url,
+          typeof error.response?.data?.detail === "string"
+            ? error.response.data.detail
+            : "Could not sync. Retry when connected.",
+        );
+        offlineChanged();
+      }
       if (
         !config ||
         config.skipOffline ||

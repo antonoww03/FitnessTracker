@@ -57,6 +57,7 @@ const db = {
   weight: [{ id: today, date: today, weight_kg: 74.5 }],
   report: [],
   meal: [],
+  favorite_food: [],
   program: [
     {
       id: "demo-program",
@@ -211,7 +212,73 @@ axios.defaults.adapter = async (config) => {
     fail(
       "Демо профил. Истинският вход е наличен само в приложението със сървър.",
     );
-  else if (path === "/plan") {
+  else if (path === "/recent-foods")
+    data = [
+      ...new Map(
+        [...db.food].reverse().map((r) => [r.food_name.toLowerCase(), r]),
+      ).values(),
+    ].slice(0, 20);
+  else if (path === "/favorite-foods") {
+    if (method === "POST") {
+      data = { ...body, id: "favorite-" + ++counter };
+      db.favorite_food.push(data);
+    } else data = [...db.favorite_food];
+  } else if (path.startsWith("/favorite-foods/")) {
+    db.favorite_food = db.favorite_food.filter(
+      (r) => r.id !== path.split("/")[2],
+    );
+    data = { ok: true };
+  } else if (/^\/food\/[^/]+\/copy$/.test(path)) {
+    const source = db.food.find((r) => r.id === path.split("/")[2]);
+    if (!source) fail("Entry not found");
+    data = { ...source, ...body, id: "copy-" + ++counter };
+    db.food.push(data);
+  } else if (path === "/exercise-progress") {
+    const result = {};
+    for (const row of db.training) {
+      if (
+        row.date < url.searchParams.get("start") ||
+        row.date > url.searchParams.get("end")
+      )
+        continue;
+      for (const e of row.sets_log || []) {
+        if (e.warmup) continue;
+        const key = e.name.toLowerCase() + row.date;
+        const r =
+          result[key] ||
+          (result[key] = {
+            name: e.name,
+            date: row.date,
+            max_weight_kg: 0,
+            max_reps: 0,
+            volume_kg: 0,
+            sets: 0,
+          });
+        r.max_weight_kg = Math.max(r.max_weight_kg, e.weight_kg);
+        r.max_reps = Math.max(r.max_reps, e.reps);
+        r.volume_kg += e.weight_kg * e.reps;
+        r.sets++;
+      }
+    }
+    data = Object.values(result).sort((a, b) => a.date.localeCompare(b.date));
+  } else if (path === "/training-calendar") {
+    data = [];
+    const d = new Date(url.searchParams.get("start") + "T12:00:00");
+    while (localDate(d) <= url.searchParams.get("end")) {
+      const date = localDate(d),
+        logs = db.training.filter((r) => r.date === date);
+      data.push({
+        ...plan(date),
+        completed: logs.length,
+        minutes: logs.reduce((n, r) => n + r.duration_minutes, 0),
+        volume_kg: logs
+          .flatMap((r) => r.sets_log || [])
+          .filter((e) => !e.warmup)
+          .reduce((n, e) => n + e.reps * e.weight_kg, 0),
+      });
+      d.setDate(d.getDate() + 1);
+    }
+  } else if (path === "/plan") {
     if (method === "PUT") {
       db.day_plan = db.day_plan.filter((r) => r.date !== body.date);
       db.day_plan.push(body);
@@ -224,6 +291,7 @@ axios.defaults.adapter = async (config) => {
     const records = {};
     for (const row of [...db.training].reverse())
       for (const set of [...(row.sets_log || [])].reverse()) {
+        if (set.warmup) continue;
         const key = set.name.toLowerCase();
         const r =
           records[key] ||

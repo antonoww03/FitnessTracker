@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { API, errorMessage } from "@/lib/api";
 import { t, storage } from "@/lib/i18n";
 import { useDraft } from "@/lib/drafts";
+import { ExerciseProgress } from "./DailyTools";
 const freshExercise = () => ({
   name: "",
   sets: 3,
@@ -172,6 +173,9 @@ export function TrainingStudio({
 }) {
   const key = `fittrack-workout:${user.id}`;
   const [programs, setPrograms] = useState([]),
+    [adding, setAdding] = useState(false),
+    [localSaved, setLocalSaved] = useState(true),
+    [newExercises, setNewExercises] = useState([freshExercise()]),
     [records, setRecords] = useState([]),
     [editing, setEditing] = useState(null),
     [active, setActive] = useState(() => {
@@ -211,7 +215,7 @@ export function TrainingStudio({
     };
   }, [revision]);
   useEffect(() => {
-    storage.set(key, JSON.stringify(active));
+    setLocalSaved(storage.set(key, JSON.stringify(active)));
   }, [active, key]);
   useEffect(() => {
     if (!active) return;
@@ -264,11 +268,23 @@ export function TrainingStudio({
           Math.min(1440, Math.round((Date.now() - active.started) / 60000)),
         ),
         program_name: active.name,
-        sets_log: done.map(({ name, reps, weight_kg }) => ({
-          name,
-          reps,
-          weight_kg,
-        })),
+        sets_log: done.map(
+          ({
+            name,
+            reps,
+            weight_kg,
+            warmup = false,
+            superset = "",
+            notes = "",
+          }) => ({
+            warmup,
+            superset,
+            notes,
+            name,
+            reps,
+            weight_kg,
+          }),
+        ),
         exercises: [],
       });
       setActive(null);
@@ -313,8 +329,12 @@ export function TrainingStudio({
             <span>{active.date}</span>
           </div>
           <p className="ft-muted">
-            {t("Saved on this device")} ·{" "}
-            {Math.max(0, Math.floor((now - active.started) / 60000))} min ·{" "}
+            {t(
+              localSaved
+                ? "Saved on this device"
+                : "Local save failed. Keep this page open until the workout is saved.",
+            )}{" "}
+            · {Math.max(0, Math.floor((now - active.started) / 60000))} min ·{" "}
             {active.sets.filter((x) => x.done).length}/{active.sets.length}
           </p>
           <div className="ft-rest" role="timer" aria-label={t("Rest timer")}>
@@ -333,6 +353,51 @@ export function TrainingStudio({
               {t(active.restUntil ? "Skip rest" : "Start 90 s rest")}
             </button>
           </div>
+          <p className="ft-muted">
+            {t(
+              "Rename a pending set to replace its exercise. Give paired sets the same superset group; rest begins after the group is complete.",
+            )}
+          </p>
+          <button
+            className="ft-secondary"
+            disabled={busy}
+            onClick={() => setAdding((v) => !v)}
+          >
+            {t("Add exercise during workout")}
+          </button>
+          {adding && (
+            <form
+              className="ft-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const extra = newExercises.flatMap((r) =>
+                  Array.from({ length: r.sets }, (_, i) => ({
+                    ...r,
+                    set: i + 1,
+                    done: false,
+                  })),
+                );
+                if (active.sets.length + extra.length > 1500) {
+                  toast.error(t("Too many sets"));
+                  return;
+                }
+                setActive({ ...active, sets: [...active.sets, ...extra] });
+                setNewExercises([freshExercise()]);
+                setAdding(false);
+              }}
+            >
+              <PlannedExercises
+                value={newExercises}
+                onChange={setNewExercises}
+              />
+              <button
+                className="ft-primary"
+                disabled={busy || !newExercises.length}
+              >
+                {t("Add to workout")}
+              </button>
+            </form>
+          )}
           {active.sets.map((e, i) => {
             const previous = records.find(
               (r) => r.name.toLowerCase() === e.name.toLowerCase(),
@@ -343,9 +408,25 @@ export function TrainingStudio({
                 key={i}
               >
                 <div>
-                  <strong>
-                    {e.name} · {e.set}
-                  </strong>
+                  <label>
+                    {t("Exercise")}
+                    <input
+                      maxLength={120}
+                      disabled={busy || e.done}
+                      value={e.name}
+                      onChange={(x) =>
+                        setActive({
+                          ...active,
+                          sets: active.sets.map((r, j) =>
+                            i === j ? { ...r, name: x.target.value } : r,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <span>
+                    {t("Sets")} {e.set}
+                  </span>
                   {previous && (
                     <p className="ft-muted">
                       {t("Previous")}: {previous.last_set.reps} ×{" "}
@@ -396,6 +477,7 @@ export function TrainingStudio({
                   className={e.done ? "ft-secondary" : "ft-primary"}
                   disabled={
                     busy ||
+                    !e.name.trim() ||
                     !Number.isInteger(e.reps) ||
                     e.reps < 1 ||
                     e.reps > 1000 ||
@@ -407,7 +489,17 @@ export function TrainingStudio({
                       ...active,
                       restUntil: e.done
                         ? active.restUntil
-                        : Date.now() + e.rest_seconds * 1000,
+                        : e.superset &&
+                            active.sets.some(
+                              (r, j) =>
+                                j !== i &&
+                                !r.done &&
+                                r.superset === e.superset &&
+                                r.set === e.set &&
+                                r.name !== e.name,
+                            )
+                          ? null
+                          : Date.now() + e.rest_seconds * 1000,
                       sets: active.sets.map((r, j) =>
                         j === i ? { ...r, done: !r.done } : r,
                       ),
@@ -416,6 +508,69 @@ export function TrainingStudio({
                 >
                   {t(e.done ? "Undo" : "Done")}
                 </button>
+                <div className="ft-set-details">
+                  <label className="ft-check">
+                    <input
+                      type="checkbox"
+                      disabled={busy || e.done}
+                      checked={e.warmup || false}
+                      onChange={(x) =>
+                        setActive({
+                          ...active,
+                          sets: active.sets.map((r, j) =>
+                            i === j ? { ...r, warmup: x.target.checked } : r,
+                          ),
+                        })
+                      }
+                    />
+                    {t("Warm-up")}
+                  </label>
+                  <label>
+                    {t("Superset group")}
+                    <input
+                      maxLength={20}
+                      disabled={busy || e.done}
+                      placeholder="A"
+                      value={e.superset || ""}
+                      onChange={(x) =>
+                        setActive({
+                          ...active,
+                          sets: active.sets.map((r, j) =>
+                            i === j ? { ...r, superset: x.target.value } : r,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {t("Set notes")}
+                    <input
+                      maxLength={500}
+                      disabled={busy || e.done}
+                      value={e.notes || ""}
+                      onChange={(x) =>
+                        setActive({
+                          ...active,
+                          sets: active.sets.map((r, j) =>
+                            i === j ? { ...r, notes: x.target.value } : r,
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    className="ft-danger-text"
+                    disabled={busy || e.done}
+                    onClick={() =>
+                      setActive({
+                        ...active,
+                        sets: active.sets.filter((_, j) => j !== i),
+                      })
+                    }
+                  >
+                    {t("Remove")}
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -492,6 +647,7 @@ export function TrainingStudio({
         ))}
         {!programs.length && <p>{t("Create your first training program")}</p>}
       </section>
+      <ExerciseProgress key={revision} selectedDate={selectedDate} />
       <section className="ft-card ft-form">
         <h2>{t("Personal records")}</h2>
         <p className="ft-muted">

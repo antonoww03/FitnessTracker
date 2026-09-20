@@ -3,11 +3,12 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API, errorMessage } from "@/lib/api";
 import { t } from "@/lib/i18n";
+import { MealType, CopyFoodButton } from "./DailyTools";
 import { useDraft } from "@/lib/drafts";
 import { format, subDays } from "date-fns";
 export const MACROS = ["calories", "protein", "fat", "carbs", "sugar", "fiber"];
 const fields = {
-  food: ["food_name", "food_description", "grams", ...MACROS],
+  food: ["meal_type", "food_name", "food_description", "grams", ...MACROS],
   training: [
     "training_type",
     "duration_minutes",
@@ -135,8 +136,17 @@ export function EntryEditor({ entry, onClose, onSave }) {
       <h2>
         {t("Edit")} · {t(entry.kind[0].toUpperCase() + entry.kind.slice(1))}
       </h2>
+      {entry.kind === "food" && (
+        <MealType
+          value={value.meal_type}
+          onChange={(meal_type) => setValue({ ...value, meal_type })}
+        />
+      )}
       {fields[entry.kind]
-        .filter((k) => !["exercises", "sets_log", "program_name"].includes(k))
+        .filter(
+          (k) =>
+            !["meal_type", "exercises", "sets_log", "program_name"].includes(k),
+        )
         .map((k) => (
           <label key={k}>
             {t(names[k] || k)}
@@ -236,6 +246,38 @@ export function EntryEditor({ entry, onClose, onSave }) {
                                   : Number(e.target.value),
                             }
                           : r,
+                      ),
+                    })
+                  }
+                />
+              </label>
+            ))}
+            <label className="ft-check">
+              <input
+                type="checkbox"
+                checked={row.warmup || false}
+                onChange={(e) =>
+                  setValue({
+                    ...value,
+                    sets_log: value.sets_log.map((r, j) =>
+                      i === j ? { ...r, warmup: e.target.checked } : r,
+                    ),
+                  })
+                }
+              />
+              {t("Warm-up")}
+            </label>
+            {["superset", "notes"].map((k) => (
+              <label key={k}>
+                {t(k === "superset" ? "Superset group" : "Set notes")}
+                <input
+                  maxLength={k === "superset" ? 20 : 500}
+                  value={row[k] || ""}
+                  onChange={(e) =>
+                    setValue({
+                      ...value,
+                      sets_log: value.sets_log.map((r, j) =>
+                        i === j ? { ...r, [k]: e.target.value } : r,
                       ),
                     })
                   }
@@ -387,6 +429,9 @@ export function HistoryView({ selectedDate, onRefresh }) {
                   <p className="ft-muted">
                     {row.date} ·{" "}
                     {row.kind === "food"
+                      ? t(row.meal_type || "snack") + " · "
+                      : ""}{" "}
+                    {row.kind === "food"
                       ? `${row.calories} kcal · ${row.grams ?? "—"} g`
                       : row.kind === "training"
                         ? `${row.duration_minutes} min`
@@ -396,7 +441,9 @@ export function HistoryView({ selectedDate, onRefresh }) {
                   </p>
                   {row.sets_log?.map((ex, i) => (
                     <p className="ft-muted" key={"set-" + i}>
-                      {ex.name}: {ex.reps} × {ex.weight_kg} kg
+                      {ex.name}: {ex.reps} × {ex.weight_kg} kg{" "}
+                      {ex.warmup && t("Warm-up")}{" "}
+                      {ex.superset && `[${ex.superset}]`} {ex.notes}
                     </p>
                   ))}
                   {row.exercises?.map((ex, i) => (
@@ -406,6 +453,16 @@ export function HistoryView({ selectedDate, onRefresh }) {
                   ))}
                 </div>
                 <div className="ft-row">
+                  {row.kind === "food" && (
+                    <CopyFoodButton
+                      row={row}
+                      selectedDate={selectedDate}
+                      onRefresh={() => {
+                        setRevision((v) => v + 1);
+                        onRefresh();
+                      }}
+                    />
+                  )}
                   <button
                     className="ft-secondary"
                     disabled={busy}
@@ -606,7 +663,7 @@ export function Chart({ rows, value, title, unit }) {
     if (!element) return;
     const measure = () =>
       setWidth(
-        Math.max(260, Math.round(element.getBoundingClientRect().width) || 650),
+        Math.max(180, Math.round(element.getBoundingClientRect().width) || 650),
       );
     measure();
     const observer = new ResizeObserver(measure);
@@ -682,7 +739,7 @@ export function Chart({ rows, value, title, unit }) {
           ),
         )}
         <text x="50" y="210" fill="currentColor" fontSize="12">
-          {rows[0].date}
+          {width < 360 ? rows[0].date.slice(5) : rows[0].date}
         </text>
         <text
           x={width - 25}
@@ -691,7 +748,7 @@ export function Chart({ rows, value, title, unit }) {
           fill="currentColor"
           fontSize="12"
         >
-          {rows.at(-1).date}
+          {width < 360 ? rows.at(-1).date.slice(5) : rows.at(-1).date}
         </text>
       </svg>
       <details>
@@ -862,6 +919,26 @@ export function SettingsView({ preferences, onSave, user, onLogout }) {
           }
         />
       </label>
+      <fieldset className="ft-form">
+        <legend>{t("Visible on Today")}</legend>
+        {["water", "weight", "training", "activity", "review"].map((key) => (
+          <label className="ft-check" key={key}>
+            <input
+              type="checkbox"
+              checked={!(value.hidden_sections || []).includes(key)}
+              onChange={(e) =>
+                setValue({
+                  ...value,
+                  hidden_sections: e.target.checked
+                    ? (value.hidden_sections || []).filter((k) => k !== key)
+                    : [...(value.hidden_sections || []), key],
+                })
+              }
+            />
+            {t(key[0].toUpperCase() + key.slice(1))}
+          </label>
+        ))}
+      </fieldset>
       <button
         disabled={busy}
         className="ft-primary"

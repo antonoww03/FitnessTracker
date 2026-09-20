@@ -64,13 +64,19 @@ import {
   RecoverySettings,
   OfflineBadge,
 } from "./components/WellnessTools";
-function AppContent({ user, onLogout }) {
+import {
+  QuickFoods,
+  TrainingCalendar,
+  AccountSecurity,
+} from "./components/DailyTools";
+function AppContent({ user, onLogout, onSignedOut }) {
   const [planRevision, setPlanRevision] = useState(0);
   const [preferences, setPreferences] = useState({
     water_goal_ml: 3000,
     language: storage.get("fittrack-language") || "en",
     theme: storage.get("fittrack-theme") || "dark",
   });
+  const visible = (key) => !(preferences.hidden_sections || []).includes(key);
   const dirty = useRef(false);
   const leave = () =>
     !(dirty.current || hasDrafts()) ||
@@ -255,6 +261,7 @@ function AppContent({ user, onLogout }) {
               "progress",
               "body",
               "reports",
+              "calendar",
               "settings",
             ].map((key) => (
               <button
@@ -291,6 +298,14 @@ function AppContent({ user, onLogout }) {
                 fetchData();
               }}
             />
+          ) : activeTab === "calendar" ? (
+            <TrainingCalendar
+              selectedDate={selectedDate}
+              onSelect={changeDate}
+              onOpenTraining={() => {
+                if (leave()) setActiveTab("training");
+              }}
+            />
           ) : activeTab === "recipes" ? (
             <RecipesView selectedDate={selectedDate} onRefresh={fetchData} />
           ) : activeTab === "body" ? (
@@ -311,6 +326,7 @@ function AppContent({ user, onLogout }) {
               <DayGoalSettings onSaved={fetchData} />
               <OfflinePanel />
               <RecoverySettings />
+              <AccountSecurity user={user} onSignedOut={onSignedOut} />
             </div>
           ) : activeTab === "progress" ? (
             <ProgressView selectedDate={selectedDate} />
@@ -323,12 +339,15 @@ function AppContent({ user, onLogout }) {
                 <button onClick={fetchData}>{t("Retry")}</button>
               </p>
             ) : (
-              <MealsView
-                key={selectedDate}
-                selectedDate={selectedDate}
-                foods={foods}
-                onRefresh={fetchData}
-              />
+              <>
+                <QuickFoods selectedDate={selectedDate} onRefresh={fetchData} />
+                <MealsView
+                  key={selectedDate}
+                  selectedDate={selectedDate}
+                  foods={foods}
+                  onRefresh={fetchData}
+                />
+              </>
             )
           ) : activeTab === "reports" ? (
             <Reports selectedDate={selectedDate} />
@@ -441,86 +460,92 @@ function AppContent({ user, onLogout }) {
                     onOpenGoals={() => setGoalsOpen(true)}
                   />
                   <div className="ft-essentials">
-                    <WaterTracker
-                      goalMl={preferences.water_goal_ml}
-                      selectedDate={selectedDate}
-                      totalWaterMl={totalWaterMl}
-                      onWaterLogged={fetchData}
-                      streak={waterStreak}
-                      onExpand={() => openEntry("water")}
-                    />
-                    <section
-                      className="ft-card ft-small-card"
-                      data-testid="weight-summary"
-                    >
-                      <div className="ft-section-head">
-                        <h2>
-                          <Scale size={18} />
-                          {t("Weight")}
-                        </h2>
+                    {visible("water") && (
+                      <WaterTracker
+                        goalMl={preferences.water_goal_ml}
+                        selectedDate={selectedDate}
+                        totalWaterMl={totalWaterMl}
+                        onWaterLogged={fetchData}
+                        streak={waterStreak}
+                        onExpand={() => openEntry("water")}
+                      />
+                    )}
+                    {visible("weight") && (
+                      <section
+                        className="ft-card ft-small-card"
+                        data-testid="weight-summary"
+                      >
+                        <div className="ft-section-head">
+                          <h2>
+                            <Scale size={18} />
+                            {t("Weight")}
+                          </h2>
+                          <button
+                            className="ft-icon-button"
+                            aria-label={t("Log weight")}
+                            onClick={() => openEntry("weight")}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                        <div
+                          className="ft-stat-number"
+                          data-testid="weight-summary-value"
+                        >
+                          {weightKg ?? "—"}
+                          <span> kg</span>
+                        </div>
+                        <p className="ft-muted">
+                          {t(
+                            weightKg == null
+                              ? "No measurement for this date"
+                              : "Measurement for this date",
+                          )}
+                        </p>
                         <button
-                          className="ft-icon-button"
-                          aria-label={t("Log weight")}
+                          className="ft-text-button"
                           onClick={() => openEntry("weight")}
                         >
-                          <Plus size={18} />
+                          {t(
+                            weightKg == null
+                              ? "Log weight"
+                              : "Update measurement",
+                          )}
                         </button>
-                      </div>
-                      <div
-                        className="ft-stat-number"
-                        data-testid="weight-summary-value"
-                      >
-                        {weightKg ?? "—"}
-                        <span> kg</span>
-                      </div>
-                      <p className="ft-muted">
-                        {t(
-                          weightKg == null
-                            ? "No measurement for this date"
-                            : "Measurement for this date",
-                        )}
-                      </p>
-                      <button
-                        className="ft-text-button"
-                        onClick={() => openEntry("weight")}
-                      >
-                        {t(
-                          weightKg == null
-                            ? "Log weight"
-                            : "Update measurement",
-                        )}
-                      </button>
-                    </section>
-                    <section className="ft-card ft-small-card">
-                      <div className="ft-section-head">
-                        <h2>
-                          <Dumbbell size={18} />
-                          {t("Training")}
-                        </h2>
+                      </section>
+                    )}
+                    {visible("training") && (
+                      <section className="ft-card ft-small-card">
+                        <div className="ft-section-head">
+                          <h2>
+                            <Dumbbell size={18} />
+                            {t("Training")}
+                          </h2>
+                          <button
+                            className="ft-icon-button"
+                            aria-label={t("Log training")}
+                            onClick={() => openEntry("training")}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                        <div className="ft-stat-number">
+                          {totalTrainingMinutes}
+                          <span> min</span>
+                        </div>
+                        <p className="ft-muted">
+                          {trainings.length}{" "}
+                          {t(trainings.length === 1 ? "session" : "sessions")}{" "}
+                          {t("logged")}
+                        </p>
                         <button
-                          className="ft-icon-button"
-                          aria-label={t("Log training")}
+                          className="ft-text-button"
                           onClick={() => openEntry("training")}
                         >
-                          <Plus size={18} />
+                          {t("Add a workout")}
                         </button>
-                      </div>
-                      <div className="ft-stat-number">
-                        {totalTrainingMinutes}
-                        <span> min</span>
-                      </div>
-                      <p className="ft-muted">
-                        {trainings.length}{" "}
-                        {t(trainings.length === 1 ? "session" : "sessions")}{" "}
-                        {t("logged")}
-                      </p>
-                      <button
-                        className="ft-text-button"
-                        onClick={() => openEntry("training")}
-                      >
-                        {t("Add a workout")}
-                      </button>
-                    </section>
+                      </section>
+                    )}
                   </div>
                 </>
               )}
@@ -530,14 +555,16 @@ function AppContent({ user, onLogout }) {
                   onRefresh={fetchData}
                 />
               ) : (
-                <ActivityFeed
-                  foods={foods}
-                  trainings={trainings}
-                  onRefresh={fetchData}
-                  selectedDate={selectedDate}
-                />
+                visible("activity") && (
+                  <ActivityFeed
+                    foods={foods}
+                    trainings={trainings}
+                    onRefresh={fetchData}
+                    selectedDate={selectedDate}
+                  />
+                )
               )}
-              {activeTab === "dashboard" && (
+              {activeTab === "dashboard" && visible("review") && (
                 <details className="ft-review">
                   <summary>
                     {t("Daily review")}
@@ -595,8 +622,13 @@ function AppContent({ user, onLogout }) {
 function App() {
   return (
     <Account>
-      {(user, onLogout) => (
-        <AppContent key={user.id} user={user} onLogout={onLogout} />
+      {(user, onLogout, onSignedOut) => (
+        <AppContent
+          key={user.id}
+          user={user}
+          onLogout={onLogout}
+          onSignedOut={onSignedOut}
+        />
       )}
     </Account>
   );

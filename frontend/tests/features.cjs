@@ -159,6 +159,57 @@ async function input(el, value) {
   assert(
     d.getElementById("fittrack-preview-app").textContent.includes("Leg day"),
   );
+  await click(btn("Start workout"));
+  await click(btn("Add exercise during workout"));
+  const during = d.querySelector('[data-testid="active-workout"] form');
+  await input(during.querySelector("input"), "Cable curl");
+  await click(btn("Add to workout", during));
+  assert.equal(id("active-workout").querySelectorAll(".ft-set-row").length, 12);
+  const setRows = id("active-workout").querySelectorAll(".ft-set-row");
+  await click(setRows[0].querySelector("input[type=checkbox]"));
+  const groupInput = (row) =>
+    [...row.querySelectorAll("label")]
+      .find((x) => x.textContent === "Superset group")
+      .querySelector("input");
+  await input(groupInput(setRows[0]), "A");
+  await input(groupInput(setRows[3]), "A");
+  await input(
+    [...setRows[3].querySelectorAll("label")]
+      .find((x) => x.textContent === "Set notes")
+      .querySelector("input"),
+    "Controlled",
+  );
+  await click(btn("Done", setRows[0]));
+  assert(
+    !btn("Skip rest", id("active-workout")),
+    "Paired round has no intermediate rest",
+  );
+  await click(btn("Done", setRows[3]));
+  assert(
+    btn("Skip rest", id("active-workout")),
+    "Rest follows the paired round",
+  );
+  await click(btn("Finish workout"));
+  assert(id("exercise-progress"));
+  assert.equal(id("exercise-progress").querySelectorAll(".ft-chart").length, 3);
+  await click(btn("Meals"));
+  const quick = id("quick-foods");
+  await click(btn("Favorite", quick));
+  assert(btn("Remove favorite", quick));
+  await input(quick.querySelector("select"), "lunch");
+  await click(btn("Log portion", quick));
+  await click(id("tab-dashboard"));
+  assert(id("activity-feed").textContent.includes("lunch"));
+  await click(btn("Copy food", id("activity-feed")));
+  await click(btn("Copy portion", id("activity-feed")));
+  assert(!btn("Copy portion", id("activity-feed")));
+  await click(btn("Calendar"));
+  assert.equal(
+    id("training-calendar").querySelectorAll(".ft-calendar-grid button").length,
+    42,
+  );
+  assert(id("training-calendar").textContent.includes("Weekly comparison"));
+  assert(id("sync-status").textContent.includes("Last updated"));
   await click(btn("Recipes"));
   await click(btn("New recipe"));
   const recipeForm = d.querySelector("form");
@@ -182,12 +233,18 @@ async function input(el, value) {
   await input(selects[0], "bg");
   await input(selects[1], "light");
   await input(d.querySelector("input[type=number]"), "3500");
+  await click(
+    [...d.querySelectorAll("fieldset label")]
+      .find((x) => x.textContent === "Weight")
+      .querySelector("input"),
+  );
   await click(btn("Save settings"));
   assert.equal(id("app-root").dataset.theme, "light");
   assert(btn("Хранения"));
   assert.equal(id("tab-history").textContent.trim(), "История");
   await click(id("tab-dashboard"));
   assert(id("water-tracker").textContent.includes("3.5 L"));
+  assert(!id("weight-summary"), "Hidden section stays hidden");
   assert(
     d
       .getElementById("fittrack-preview-app")
@@ -195,7 +252,7 @@ async function input(el, value) {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: saved meal/logging, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target, programs, completed sets, rest timer, records, recipes and measurements.",
+    "PASS: saved meal/logging, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target, programs, completed sets, rest timer, records, recipes, measurements, warm-ups, supersets, set notes, exercise charts, favorites, portion copying, calendar, sync status and dashboard visibility.",
   );
   dom.window.close();
 })().catch((e) => {

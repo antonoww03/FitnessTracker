@@ -50,6 +50,7 @@ const api = w.testing;
     config,
   });
   await api.axios.get("/api/summary");
+  assert(api.syncStatus().lastUpdated, "Successful summary updates timestamp");
   api.axios.defaults.adapter = async (config) => {
     throw Object.assign(new Error("network"), { config });
   };
@@ -59,6 +60,7 @@ const api = w.testing;
     amount_ml: 250,
   });
   assert.equal(result.status, 202);
+  assert(api.syncStatus().errors.length > 0, "Network failure remains visible");
   assert.equal((await api.queue()).length, 1);
   const operation = (await api.queue())[0].config.headers["X-Operation-ID"];
   assert(operation);

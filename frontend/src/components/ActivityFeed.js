@@ -3,6 +3,7 @@ import { Trash2, UtensilsCrossed, Dumbbell, Save, Pencil } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
+import { CopyFoodButton } from "./DailyTools";
 import { EntryEditor } from "./FeatureHub";
 import { t } from "@/lib/i18n";
 import { API } from "@/lib/api";
@@ -106,7 +107,9 @@ export const ActivityFeed = ({ foods, trainings, onRefresh, selectedDate }) => {
       {items.map((item) => {
         const food = item.kind === "food",
           Icon = food ? UtensilsCrossed : Dumbbell,
-          name = food ? item.food_name : item.training_type;
+          name = food
+            ? item.food_name
+            : item.program_name || item.training_type;
         const time = item.timestamp
           ? new Date(item.timestamp).toLocaleTimeString([], {
               hour: "2-digit",
@@ -120,8 +123,16 @@ export const ActivityFeed = ({ foods, trainings, onRefresh, selectedDate }) => {
             </div>
             <div className="ft-activity-description">
               <strong>{name}</strong>
+              {food && (
+                <CopyFoodButton
+                  row={item}
+                  selectedDate={selectedDate}
+                  onRefresh={onRefresh}
+                />
+              )}
               <div className="ft-activity-detail">
                 {time && <span>{time}</span>}
+                {food && <span>{t(item.meal_type || "snack")}</span>}
                 {food ? (
                   <>
                     <span>

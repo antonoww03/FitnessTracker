@@ -63,7 +63,9 @@
     "test": "craco test",
     "test:e2e": "node tests/functional.cjs",
     "test:features": "node tests/features.cjs",
-    "test:offline": "node tests/offline.cjs"
+    "test:offline": "node tests/offline.cjs",
+    "test:mobile": "node tests/mobile.cjs",
+    "test:pwa": "node tests/service-worker.cjs"
   },
   "browserslist": {
     "production": [

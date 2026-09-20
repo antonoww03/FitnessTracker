@@ -63,3 +63,9 @@ Scope: every active application component and API call, current backend routes, 
 Added program scheduling, completed-set sessions and editing, rest timers, derived records/volume, recipes with portion scaling, body measurements, daily training/rest goals, PWA shell caching and opt-in per-account offline writes. Recovery uses single-use hashed codes and invalidates sessions after a reset. Offline POST replay is transactionally deduplicated per account and operation ID; differing payload reuse returns 409. Delayed responses from a prior account do not populate the current account's cache.
 
 Validation includes 57 backend tests plus React DOM and IndexedDB queue simulations. The inline demo uses the actual components with an in-memory adapter. No hosting deployment or real installed-device verification is implied. Run a final phone/PWA acceptance check after deployment.
+
+## Everyday-use and reliability pass
+
+Implemented all proposed code additions: flexible active workouts (warm-ups, superset rounds, notes and added/replaced exercises), per-exercise charts, categorized food favorites/recent/copy flows, visible sync status, configurable Today sections, calendar and week comparison, account security/deletion, and GitHub Actions quality checks.
+
+Corrected inherited Pydantic whitespace stripping for passwords, old preferences loading without the new visibility field, canceled requests being treated as sync failures, and the silent local-workout storage success message. Account cleanup accepts the explicit owner so a concurrent 401 cannot redirect cleanup to an empty account context. Added API tests for these changes, account isolation and live-data deletion; frontend tests exercise the new workflows. Physical-device installation and OS keyboard/locked-screen behavior remain outside DOM/emulation verification.

@@ -12,6 +12,7 @@ import {
   discardQueued,
   setOfflineEnabled,
   offlineEnabled,
+  syncStatus,
 } from "@/lib/offline";
 const zeros = () => Object.fromEntries(MACROS.map((k) => [k, 0]));
 const ingredient = () => ({ name: "", grams: 100, per100: zeros() });
@@ -488,11 +489,13 @@ export function DayGoalSettings({ onSaved }) {
 }
 export function OfflinePanel() {
   const [items, setItems] = useState([]),
+    [syncErrors, setSyncErrors] = useState([]),
     [on, setOn] = useState(offlineEnabled()),
     [busy, setBusy] = useState(false),
     [install, setInstall] = useState(null);
   useEffect(() => {
     const update = () => {
+      setSyncErrors(syncStatus().errors);
       setOn(offlineEnabled());
       queue().then(setItems);
     };
@@ -557,6 +560,11 @@ export function OfflinePanel() {
           "Keeps a local copy on this device. Offline food, water, weight and training entries sync when online. Sign out clears local cached data.",
         )}
       </p>
+      {syncErrors.map((message, i) => (
+        <p role="alert" key={i}>
+          {t(message)}
+        </p>
+      ))}
       <strong>
         {items.length} {t("pending entries")}
       </strong>
@@ -638,26 +646,60 @@ export function RecoverySettings() {
   );
 }
 export function OfflineBadge({ onOpen }) {
-  const [count, setCount] = useState(0),
-    [online, setOnline] = useState(navigator.onLine);
+  const [state, setState] = useState({
+    ...syncStatus(),
+    count: 0,
+    online: navigator.onLine,
+  });
   useEffect(() => {
-    const update = () => {
-      queue().then((r) => setCount(r.length));
-      setOnline(navigator.onLine);
+    let alive = true;
+    const update = async () => {
+      const pending = await queue();
+      if (alive)
+        setState({
+          ...syncStatus(),
+          count: pending.length,
+          online: navigator.onLine,
+        });
     };
     update();
     const unsub = subscribeOffline(update);
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     return () => {
+      alive = false;
       unsub();
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };
   }, []);
-  return !online || count ? (
-    <button className="ft-offline-badge" onClick={onOpen}>
-      {!online ? t("Offline") : t("Pending sync")} · {count}
-    </button>
-  ) : null;
+  const label = state.working
+    ? "Syncing…"
+    : state.count
+      ? "Saved on this device"
+      : !state.online
+        ? "Offline"
+        : state.errors.length
+          ? "Sync needs attention"
+          : state.lastUpdated
+            ? "Synced"
+            : "Waiting for data";
+  return (
+    <div className="ft-sync-status" role="status" data-testid="sync-status">
+      <button className="ft-secondary" onClick={onOpen}>
+        {t(label)}
+        {state.count ? ` · ${state.count} ${t("pending entries")}` : ""}
+      </button>
+      {state.lastUpdated && (
+        <span className="ft-muted">
+          {t("Last updated")}: {new Date(state.lastUpdated).toLocaleString()}
+        </span>
+      )}
+      {(state.count > 0 || !state.online) && (
+        <span className="ft-muted">
+          {t("Totals show the last synchronized data.")}
+        </span>
+      )}
+    </div>
+  );
 }

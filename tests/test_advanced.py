@@ -83,3 +83,85 @@ def test_backup_new_collections_round_trip(clients):
     assert b.get('/api/programs').json()[0]['name']==PROGRAM['name']
     assert b.get('/api/recipes').json()[0]['per_portion']['calories']==130
     assert b.get('/api/measurements').json()[0]['waist_cm']==80
+
+
+def test_password_change_and_all_sessions(clients):
+    a,b=clients
+    other_token=a.cookies.get('fittrack_session')
+    assert a.post('/api/auth/change-password',json={'password':'wrong-password-123','new_password':'a-new-password-123'}).status_code==403
+    assert a.post('/api/auth/change-password',json={'password':'a-unique-password-123','new_password':'a-new-password-123'}).status_code==200
+    assert a.get('/api/auth/me').status_code==401
+    assert a.post('/api/auth/login',json={'username':'alice','password':'a-unique-password-123'}).status_code==401
+    assert a.post('/api/auth/login',json={'username':'alice','password':'a-new-password-123'}).status_code==200
+    assert a.post('/api/auth/logout-all',json={'password':'a-new-password-123'}).status_code==200
+    assert a.get('/api/auth/me').status_code==401
+    assert b.get('/api/auth/me').status_code==200
+
+
+def test_account_deletion_scoped_and_confirmed(clients):
+    a,b=clients
+    alice=a.get('/api/auth/me').json()['id']
+    a.post('/api/food',json=FOOD,headers={'X-Operation-ID':'account-delete-op-123'})
+    b.post('/api/food',json=FOOD)
+    assert a.request('DELETE','/api/auth/account',json={'password':'a-unique-password-123','confirm_username':'bob'}).status_code==422
+    assert a.request('DELETE','/api/auth/account',json={'password':'a-unique-password-123','confirm_username':'alice'}).status_code==200
+    assert a.get('/api/auth/me').status_code==401
+    assert len(b.get('/api/food?date='+DAY).json())==1
+    with server.database() as db:
+        assert db.execute('SELECT count(*) FROM records WHERE substr(kind,1,?)=?',(len(alice)+1,alice+':')).fetchone()[0]==0
+        for table,key in [('users','id'),('sessions','user_id'),('operations','owner'),('recovery','user_id')]:
+            assert db.execute(f'SELECT count(*) FROM {table} WHERE {key}=?',(alice,)).fetchone()[0]==0
+
+
+def test_favorites_recent_copy_and_backup(clients):
+    a,b=clients
+    row=a.post('/api/food',json={**FOOD,'meal_type':'lunch'}).json()
+    a.post('/api/food',json={**FOOD,'date':'2026-09-18'})
+    assert len(a.get('/api/recent-foods').json())==1
+    favorite=a.post('/api/favorite-foods',json=FOOD).json()
+    assert b.get('/api/favorite-foods').json()==[]
+    assert b.delete('/api/favorite-foods/'+favorite['id']).status_code==404
+    assert b.post('/api/food/'+row['id']+'/copy',json={'date':DAY}).status_code==404
+    copied=a.post('/api/food/'+row['id']+'/copy',json={'date':'2026-09-19','meal_type':'dinner'}).json()
+    assert copied['meal_type']=='dinner' and copied['calories']==FOOD['calories'] and copied['id']!=row['id']
+    assert a.post('/api/food',json={**FOOD,'meal_type':'unknown'}).status_code==422
+    backup=a.get('/api/backup').json()
+    assert b.post('/api/backup/restore',json=backup).status_code==200
+    assert b.get('/api/favorite-foods').json()[0]['food_name']=='Rice'
+
+
+def test_working_sets_progress_and_calendar(clients):
+    a,b=clients
+    program=a.post('/api/programs',json=PROGRAM).json()
+    body={'date':DAY,'training_type':'Strength','duration_minutes':30,'sets_log':[{'name':'Row','reps':20,'weight_kg':100,'warmup':True,'notes':'warm up'},{'name':'Row','reps':8,'weight_kg':60,'superset':'A','notes':'controlled'}]}
+    row=a.post('/api/training',json=body).json()
+    assert row['sets_log'][1]['notes']=='controlled'
+    rec=a.get('/api/personal-records').json()[0]
+    assert rec['max_weight_kg']==60 and rec['total_volume_kg']==480
+    progress=a.get('/api/exercise-progress?start='+DAY+'&end='+DAY).json()
+    assert progress[0]['volume_kg']==480 and progress[0]['sets']==1
+    assert b.get('/api/exercise-progress?start='+DAY+'&end='+DAY).json()==[]
+    calendar=a.get('/api/training-calendar?start='+DAY+'&end='+DAY).json()[0]
+    assert calendar['completed']==1 and calendar['program']['id']==program['id'] and calendar['volume_kg']==480
+    assert a.get('/api/training-calendar?start=2025-01-01&end='+DAY).status_code==422
+    assert a.put('/api/preferences',json={'hidden_sections':['water','activity']}).status_code==200
+    assert a.get('/api/preferences').json()['hidden_sections']==['water','activity']
+    assert b.get('/api/preferences').json()['hidden_sections']==[]
+
+
+def test_legacy_preferences_upgrade(clients):
+    a,b=clients
+    owner=a.get('/api/auth/me').json()['id']
+    import json
+    with server.database() as db:
+        db.execute('INSERT INTO records VALUES (?,?,?,?)',(owner+':preferences','settings','',json.dumps({'water_goal_ml':3200,'language':'bg','theme':'light'})))
+    assert a.get('/api/preferences').json()['hidden_sections']==[]
+
+
+def test_password_spaces_are_significant(clients):
+    a,b=clients
+    spaced='  a-unique-password-123  '
+    assert a.post('/api/auth/change-password',json={'password':'a-unique-password-123','new_password':spaced}).status_code==200
+    assert a.post('/api/auth/login',json={'username':'alice','password':spaced.strip()}).status_code==401
+    assert a.post('/api/auth/login',json={'username':'alice','password':spaced}).status_code==200
+    assert a.post('/api/auth/recovery-code',json={'password':spaced}).status_code==200

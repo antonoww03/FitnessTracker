@@ -152,7 +152,10 @@ export const storage = {
   set(key, value) {
     try {
       localStorage.setItem(key, value);
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   },
 };
 let language = storage.get("fittrack-language") || "en";
@@ -321,4 +324,76 @@ Object.assign(dictionary, {
 Object.assign(dictionary, {
   "Sign out and discard the saved workout?":
     "Изход и изтриване на незавършената тренировка?",
+});
+Object.assign(dictionary, {
+  "Meal category": "Хранене",
+  breakfast: "Закуска",
+  lunch: "Обяд",
+  dinner: "Вечеря",
+  snack: "Междинно хранене",
+  "Quick food logging": "Бързо добавяне на храна",
+  "Copy to date": "Копирай за дата",
+  "Log the same portion on the chosen date, or save it as a favorite.":
+    "Добави същата порция за избраната дата или я запази в любими.",
+  Favorites: "Любими",
+  Favorite: "В любими",
+  "Remove favorite": "Премахни от любими",
+  "Recent foods": "Последни храни",
+  "No favorites yet": "Още няма любими",
+  "No food logged yet": "Още няма записана храна",
+  "Log portion": "Добави порцията",
+  "Copy food": "Копирай храната",
+  "Copy portion": "Копирай порцията",
+  "Exercise progress": "Прогрес по упражнение",
+  Period: "Период",
+  days: "дни",
+  "Charts group working sets by day. Warm-up sets are excluded.":
+    "Графиките обобщават работните серии по дни, без загряващите.",
+  "Warm-up": "Загряваща",
+  "Superset group": "Група за суперсерия",
+  "Set notes": "Бележка за серията",
+  "Rename a pending set to replace its exercise. Give paired sets the same superset group; rest begins after the group is complete.":
+    "Смени името на незавършена серия, за да замениш упражнението. Дай еднаква група на свързаните серии; почивката започва след завършване на същия кръг.",
+  "Add exercise during workout": "Добави упражнение в тренировката",
+  "Add to workout": "Добави към тренировката",
+  "Too many sets": "Твърде много серии",
+  Calendar: "Календар",
+  "Previous month": "Предишен месец",
+  "Next month": "Следващ месец",
+  "● Planned · ✓ Completed · – Rest": "● Планирана · ✓ Завършена · – Почивка",
+  "Weekly comparison": "Сравнение по седмици",
+  Week: "Седмица",
+  "Selected week": "Избрана седмица",
+  "Previous week": "Предишна седмица",
+  "Visible on Today": "Видими секции в Днес",
+  Activity: "Активност",
+  Review: "Дневен преглед",
+  "Account security": "Сигурност на профила",
+  "Change password": "Смени паролата",
+  "Sign out all devices": "Изход от всички устройства",
+  "Delete account": "Изтрий профила",
+  "Type your username to confirm":
+    "Напиши потребителското си име за потвърждение",
+  "Permanently delete your account and all live data?":
+    "Изтриване завинаги на профила и всички текущи данни?",
+  "This signs you out on every device. Pending local entries and the saved workout will be removed. Continue?":
+    "Ще излезеш от всички устройства. Чакащите локални записи и незавършената тренировка ще бъдат премахнати. Продължаваш ли?",
+  "Changing your password also invalidates your recovery code. Generate a new code after signing in.":
+    "Смяната на паролата обезсилва и кода за възстановяване. Генерирай нов код след вход.",
+  "Deletion is permanent for live data. Existing private server backups expire under the operator’s retention policy.":
+    "Текущите данни се изтриват завинаги. Съществуващите сървърни резервни копия се премахват според срока за съхранение.",
+  "Syncing…": "Синхронизиране…",
+  "Sync needs attention": "Проблем при синхронизация",
+  Synced: "Синхронизирано",
+  "Waiting for data": "Изчакване на данни",
+  "Last updated": "Последно обновяване",
+  "Totals show the last synchronized data.":
+    "Общите стойности показват последно синхронизираните данни.",
+  "Could not sync. Retry when connected.":
+    "Неуспешна синхронизация. Опитай при връзка.",
+});
+
+Object.assign(dictionary, {
+  "Local save failed. Keep this page open until the workout is saved.":
+    "Локалният запис е неуспешен. Не затваряй страницата, докато не запазиш тренировката.",
 });

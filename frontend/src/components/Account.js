@@ -23,6 +23,7 @@ export function Account({ children }) {
     const account = { id: data.id, username: data.username };
     setOfflineUser(account);
     setUser(account);
+    syncOffline();
     if (data.recovery_code) setRecovery(data.recovery_code);
   }
   useEffect(() => {
@@ -178,29 +179,36 @@ export function Account({ children }) {
         </form>
       </div>
     );
-  return children(user, async () => {
-    const pending = await queue();
-    if (
-      !window.confirm(
-        t(
-          pending.length
-            ? "Sign out and delete pending offline entries?"
-            : storage.get(`fittrack-workout:${user.id}`) &&
-                storage.get(`fittrack-workout:${user.id}`) !== "null"
-              ? "Sign out and discard the saved workout?"
-              : "Sign out",
-        ) + "?",
+  return children(
+    user,
+    async () => {
+      const pending = await queue();
+      if (
+        !window.confirm(
+          t(
+            pending.length
+              ? "Sign out and delete pending offline entries?"
+              : storage.get(`fittrack-workout:${user.id}`) &&
+                  storage.get(`fittrack-workout:${user.id}`) !== "null"
+                ? "Sign out and discard the saved workout?"
+                : "Sign out",
+          ) + "?",
+        )
       )
-    )
-      return;
-    try {
-      await axios.post(`${API}/auth/logout`);
-      await clearOffline();
-      storage.set(`fittrack-workout:${user.id}`, "null");
+        return;
+      try {
+        await axios.post(`${API}/auth/logout`);
+        await clearOffline(user.id);
+        storage.set(`fittrack-workout:${user.id}`, "null");
+        setOfflineUser(null);
+        setUser(null);
+      } catch (e) {
+        toast.error(errorMessage(e, "Could not sign out"));
+      }
+    },
+    () => {
       setOfflineUser(null);
       setUser(null);
-    } catch (e) {
-      toast.error(errorMessage(e, "Could not sign out"));
-    }
-  });
+    },
+  );
 }

@@ -80,7 +80,7 @@ def test_weight_rolling_average_and_preferences(clients):
         a.post('/api/weight',json={'date':date,'weight_kg':weight})
     row=a.get('/api/progress?start=2026-09-17&end=2026-09-17').json()[0]
     assert row['weight_average_7d']==73 and row['weight_samples_7d']==2
-    prefs={'water_goal_ml':3500,'language':'bg','theme':'light'}
+    prefs={'water_goal_ml':3500,'language':'bg','theme':'light','hidden_sections':[]}
     assert a.put('/api/preferences',json=prefs).json()==prefs
     assert b.get('/api/preferences').json()['water_goal_ml']==3000
     assert a.put('/api/preferences',json={**prefs,'water_goal_ml':0}).status_code==422

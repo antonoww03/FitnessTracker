@@ -128,6 +128,7 @@ class Goals(Model):
 
 
 class FoodLogCreate(Dated):
+    meal_type: Literal["breakfast", "lunch", "dinner", "snack"] = "snack"
     grams: Positive | None = None
     food_description: str = Field(min_length=1, max_length=2000)
     food_name: str = Field(min_length=1, max_length=2000)
@@ -147,6 +148,9 @@ class Exercise(Model):
 
 
 class CompletedSet(Model):
+    warmup: bool = False
+    superset: str = Field(default="", max_length=20)
+    notes: str = Field(default="", max_length=500)
     name: str = Field(min_length=1, max_length=120)
     reps: int = Field(ge=1, le=1000)
     weight_kg: float = Field(ge=0, le=1000)
@@ -440,7 +444,7 @@ def export_reports(format: str = 'csv', period: Period = 'all', date: Date | Non
 
 
 class Credentials(Model):
-    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=False, extra="forbid")
     username: str = Field(pattern=r'^[A-Za-z0-9_.-]{3,40}$')
     password: str = Field(min_length=12, max_length=128)
 
@@ -555,6 +559,7 @@ def logout(request: Request, response: Response):
 
 
 class Preferences(Model):
+    hidden_sections: list[Literal["water", "weight", "training", "activity", "review"]] = Field(default_factory=list, max_length=5)
     water_goal_ml: float = Field(default=3000, ge=100, le=20000)
     language: Literal['en', 'bg'] = 'en'
     theme: Literal['dark', 'light'] = 'dark'
@@ -563,7 +568,7 @@ class Preferences(Model):
 @api_router.get('/preferences')
 def get_preferences():
     rows = records('preferences')
-    return Preferences.model_validate({k: rows[0][k] for k in Preferences.model_fields}).model_dump() if rows else Preferences().model_dump()
+    return Preferences.model_validate({k: rows[0][k] for k in Preferences.model_fields if k in rows[0]}).model_dump() if rows else Preferences().model_dump()
 
 
 @api_router.put('/preferences')

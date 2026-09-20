@@ -1,5 +1,5 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v3";
+const CACHE = "fittrack-shell-v4";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {

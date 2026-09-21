@@ -34,7 +34,10 @@ export function Account({ children }) {
         syncOffline();
       })
       .catch(async (e) => {
-        if (!navigator.onLine) {
+        // Browsers can briefly report navigator.onLine=true after the network
+        // has disappeared. A request without an HTTP response is the reliable
+        // signal that the saved offline account should be used.
+        if (!e.response) {
           const cached = await cachedAccount();
           if (cached && storage.get(`offline-enabled:${cached.id}`) === "1") {
             accept(cached);

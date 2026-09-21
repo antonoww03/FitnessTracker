@@ -69,7 +69,12 @@ import {
   TrainingCalendar,
   AccountSecurity,
 } from "./components/DailyTools";
+import {
+  DeviceIntegrations,
+  useReminderEngine,
+} from "./components/DeviceIntegrations";
 function AppContent({ user, onLogout, onSignedOut }) {
+  useReminderEngine(user.id);
   const [planRevision, setPlanRevision] = useState(0);
   const [preferences, setPreferences] = useState({
     water_goal_ml: 3000,
@@ -325,6 +330,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
               />
               <DayGoalSettings onSaved={fetchData} />
               <OfflinePanel selectedDate={selectedDate} />
+              <DeviceIntegrations user={user} />
               <RecoverySettings />
               <AccountSecurity user={user} onSignedOut={onSignedOut} />
             </div>
@@ -423,6 +429,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
                     <TrainingLog
                       selectedDate={selectedDate}
                       onTrainingLogged={afterSave}
+                      userId={user.id}
                     />
                   )}
                   {entryType === "water" && (
@@ -440,6 +447,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
                       selectedDate={selectedDate}
                       weightKg={weightKg}
                       onWeightLogged={afterSave}
+                      userId={user.id}
                     />
                   )}
                 </section>

@@ -17,6 +17,7 @@ import { API } from "@/lib/api";
 
 import {ExerciseEditor} from "./FeatureHub";
 import {format,subDays} from "date-fns";
+import { writeHealthWorkout } from "@/lib/health";
 
 const TRAINING_TYPES = [
   "Strength",
@@ -29,7 +30,7 @@ const TRAINING_TYPES = [
   "Walking",
 ];
 
-export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
+export const TrainingLog = ({ selectedDate, onTrainingLogged, userId }) => {
   const [trainingType, setTrainingType] = useState("");
   const [duration, setDuration] = useState("");
   const [exercises,setExercises]=useState([]);
@@ -45,11 +46,15 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
     }
     setSaving(true);
     try {
-      await axios.post(`${API}/training`, {
+      const entry = {
         training_type: trainingType,
         duration_minutes: Number(duration),
         date: selectedDate, exercises,
-      });
+      };
+      await axios.post(`${API}/training`, entry);
+      await writeHealthWorkout(userId, entry).catch(() =>
+        toast.info(t("Saved in FitTrack; Apple Health sync failed")),
+      );
       toast.success(`${trainingType} - ${duration}min logged`);
       setTrainingType("");
       setDuration(""); setExercises([]);
@@ -76,8 +81,8 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged }) => {
           <SelectContent className="bg-[#141414] border-[#2A2A2A]">
             {TRAINING_TYPES.map((type) => (
               <SelectItem
-                key={t(type)}
-                value={t(type)}
+                key={type}
+                value={type}
                 className="text-white hover:bg-[#2A2A2A] focus:bg-[#2A2A2A] focus:text-white font-body text-sm cursor-pointer"
                 data-testid={`training-type-${type.toLowerCase()}`}
               >

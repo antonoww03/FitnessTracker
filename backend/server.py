@@ -176,6 +176,75 @@ class FoodAnalyzeRequest(Model):
     description: str = Field(min_length=1, max_length=2000)
 
 
+def _nutrient_100g(nutrients, name, required=False):
+    value = nutrients.get(name + '_100g')
+    if value is None and name == 'calories':
+        value = nutrients.get('energy-kcal_100g')
+        if value is None and nutrients.get('energy_100g') is not None:
+            value = float(nutrients['energy_100g']) / 4.184
+    if value is None:
+        if required:
+            raise HTTPException(422, 'This product has incomplete nutrition data. Enter the missing values manually.')
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(502, 'Food provider returned invalid nutrition data.') from None
+    if value < 0 or not math.isfinite(value):
+        raise HTTPException(502, 'Food provider returned invalid nutrition data.')
+    return round(value, 3)
+
+
+@api_router.get('/food/barcode/{barcode}')
+async def food_by_barcode(barcode: str):
+    if not re.fullmatch(r'\d{8,14}', barcode):
+        raise HTTPException(422, 'Enter an 8 to 14 digit barcode.')
+    fields = 'code,product_name,product_name_en,brands,nutriments'
+    try:
+        async with httpx.AsyncClient(
+            timeout=10,
+            headers={'User-Agent': 'FitTrack/1.0 (github.com/antonoww03/FitnessTracker)'},
+        ) as client:
+            response = await client.get(
+                f'https://world.openfoodfacts.org/api/v2/product/{barcode}',
+                params={'fields': fields},
+            )
+        if response.status_code != 200:
+            raise HTTPException(502, 'Barcode provider is unavailable. Enter nutrition manually.')
+        payload = response.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, 'Barcode lookup timed out. Try again.') from None
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, 'Barcode provider returned invalid data.') from None
+    if payload.get('status') != 1 or not payload.get('product'):
+        raise HTTPException(404, 'Product not found. Enter it manually.')
+    product = payload['product']
+    name = product.get('product_name') or product.get('product_name_en')
+    if not isinstance(name, str) or not name.strip():
+        raise HTTPException(422, 'This product has no name. Enter it manually.')
+    brand = product.get('brands')
+    display_name = f'{brand.strip()} · {name.strip()}' if isinstance(brand, str) and brand.strip() else name.strip()
+    nutrients = product.get('nutriments') or {}
+    values = {
+        'calories': _nutrient_100g(nutrients, 'calories', True),
+        'protein': _nutrient_100g(nutrients, 'proteins', True),
+        'fat': _nutrient_100g(nutrients, 'fat', True),
+        'carbs': _nutrient_100g(nutrients, 'carbohydrates', True),
+        'sugar': _nutrient_100g(nutrients, 'sugars'),
+        'fiber': _nutrient_100g(nutrients, 'fiber'),
+    }
+    return {
+        'barcode': barcode,
+        'food_name': display_name,
+        'source': 'Open Food Facts',
+        'estimated': True,
+        'grams': 100,
+        'per100': True,
+        'missing': [key for key, value in values.items() if value is None],
+        **values,
+    }
+
+
 @api_router.get('')
 @api_router.get('/')
 def health():

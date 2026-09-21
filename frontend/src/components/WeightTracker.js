@@ -7,8 +7,9 @@ import axios from "axios";
 import { toast } from "sonner";
 
 import { API } from "@/lib/api";
+import { writeHealthWeight } from "@/lib/health";
 
-export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
+export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged, userId }) => {
   const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -19,6 +20,10 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
     setSaving(true);
     try {
       await axios.post(`${API}/weight`, { weight_kg: w, date: selectedDate });
+      await writeHealthWeight(userId, {
+        date: selectedDate,
+        weight_kg: w,
+      }).catch(() => toast.info(t("Saved in FitTrack; Apple Health sync failed")));
       toast.success(`Weight logged: ${w} kg`);
       setWeight("");
       onWeightLogged();

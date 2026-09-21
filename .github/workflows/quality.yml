@@ -33,6 +33,7 @@ jobs:
       - run: python -m pytest tests -q
       - run: npm run test:features --prefix frontend
       - run: npm run test:offline --prefix frontend
+      - run: npm run test:reminders --prefix frontend
       - run: node frontend/tests/service-worker.cjs
       - run: npm run build --prefix frontend
       - name: Install browser for UI checks

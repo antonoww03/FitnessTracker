@@ -5,6 +5,7 @@ import { API, errorMessage } from "@/lib/api";
 import { t, storage } from "@/lib/i18n";
 import { useDraft } from "@/lib/drafts";
 import { ExerciseProgress } from "./DailyTools";
+import { writeHealthWorkout } from "@/lib/health";
 const freshExercise = () => ({
   name: "",
   sets: 3,
@@ -260,7 +261,7 @@ export function TrainingStudio({
     if (!done.length) return;
     setBusy(true);
     try {
-      await axios.post(`${API}/training`, {
+      const entry = {
         date: active.date,
         training_type: "Strength",
         duration_minutes: Math.max(
@@ -286,7 +287,11 @@ export function TrainingStudio({
           }),
         ),
         exercises: [],
-      });
+      };
+      await axios.post(`${API}/training`, entry);
+      await writeHealthWorkout(user.id, entry).catch(() =>
+        toast.info(t("Saved in FitTrack; Apple Health sync failed")),
+      );
       setActive(null);
       setRevision((v) => v + 1);
       await onRefresh();

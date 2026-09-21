@@ -69,3 +69,19 @@ Validation includes 57 backend tests plus React DOM and IndexedDB queue simulati
 Implemented all proposed code additions: flexible active workouts (warm-ups, superset rounds, notes and added/replaced exercises), per-exercise charts, categorized food favorites/recent/copy flows, visible sync status, configurable Today sections, calendar and week comparison, account security/deletion, and GitHub Actions quality checks.
 
 Corrected inherited Pydantic whitespace stripping for passwords, old preferences loading without the new visibility field, canceled requests being treated as sync failures, and the silent local-workout storage success message. Account cleanup accepts the explicit owner so a concurrent 401 cannot redirect cleanup to an empty account context. Added API tests for these changes, account isolation and live-data deletion; frontend tests exercise the new workflows. Physical-device installation and OS keyboard/locked-screen behavior remain outside DOM/emulation verification.
+
+## Device integration pass
+
+Added validated Open Food Facts barcode lookup through the backend, a
+cross-browser ZXing camera scanner with manual-code fallback, and editable
+per-100 g results. Added per-device water/workout/weigh-in reminders, explicit
+notification permission, test delivery, duplicate-slot protection and service
+worker notification navigation. Local scheduling cannot wake a closed browser;
+full background delivery still needs a deployed Web Push scheduler.
+
+Apple Health cannot be accessed from the web platform. The app now exposes an
+honest capability-gated Settings option plus a host-restricted native HealthKit
+bridge and minimal iOS WebView shell under `ios/`. It reads aggregate HealthKit
+data and, after explicit authorization, writes new FitTrack weight/workouts.
+Building and signing that native target with the HealthKit entitlement remains
+an Apple/Xcode deployment step, not something the web CI can certify.

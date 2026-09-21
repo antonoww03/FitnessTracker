@@ -472,7 +472,23 @@ axios.defaults.adapter = async (config) => {
           { type: "water", tip: `Water logged: ${s.total_water_ml} ml.` },
         ]),
     };
-  } else if (path === "/food/analyze")
+  } else if (path.startsWith("/food/barcode/"))
+    data = {
+      barcode: path.split("/").pop(),
+      food_name: "Demo protein pudding",
+      source: "Open Food Facts",
+      estimated: true,
+      grams: 100,
+      per100: true,
+      missing: [],
+      calories: 92,
+      protein: 10,
+      fat: 1.5,
+      carbs: 8,
+      sugar: 4,
+      fiber: 1,
+    };
+  else if (path === "/food/analyze")
     fail(
       "В този преглед използвай Enter nutrition manually. USDA изисква работещ backend и API ключ.",
     );

@@ -225,6 +225,65 @@ Object.assign(dictionary, {
   session: "тренировка",
 });
 Object.assign(dictionary, {
+  Barcode: "Баркод",
+  Find: "Намери",
+  "Scan with camera": "Сканирай с камера",
+  "Barcode camera": "Камера за баркод",
+  "Close camera": "Затвори камерата",
+  "or enter food": "или въведи храна",
+  "Camera scanning is unavailable. Allow camera access or enter the barcode.":
+    "Сканирането с камера не е достъпно. Разреши камерата или въведи баркода.",
+  "Product data comes from Open Food Facts. Check the label before saving.":
+    "Данните са от Open Food Facts. Провери етикета преди запис.",
+  "Fill the missing nutrition values from the product label.":
+    "Попълни липсващите хранителни стойности от етикета.",
+  "Product could not be found.": "Продуктът не беше намерен.",
+  "Notifications and reminders": "Известия и напомняния",
+  "Notifications are allowed on this device.":
+    "Известията са разрешени на това устройство.",
+  "Allow notifications before enabling reminders.":
+    "Разреши известията, преди да включиш напомняния.",
+  "Allow notifications": "Разреши известия",
+  "Notifications are ready": "Известията са готови",
+  "FitTrack can now show your device reminders.":
+    "FitTrack вече може да показва напомняния на устройството.",
+  "Water reminder": "Напомняне за вода",
+  "Remind me to drink water": "Напомняй ми да пия вода",
+  "Every (minutes)": "На всеки (минути)",
+  From: "От",
+  Until: "До",
+  "Workout reminder": "Напомняне за тренировка",
+  "Remind me to train": "Напомняй ми да тренирам",
+  "Weigh-in reminder": "Напомняне за тегло",
+  "Remind me to weigh in": "Напомняй ми да се претегля",
+  Time: "Час",
+  "Save reminders": "Запази напомнянията",
+  "Reminder settings saved": "Напомнянията са запазени",
+  "Could not save reminder settings": "Напомнянията не бяха запазени",
+  "Send test notification": "Изпрати тестово известие",
+  "FitTrack test reminder": "Тестово FitTrack напомняне",
+  "Your reminders are working.": "Напомнянията работят.",
+  "Device reminders run while FitTrack is open. Background delivery requires the installed PWA and a deployed push service.":
+    "Напомнянията работят, докато FitTrack е отворен. За работа на заден фон са нужни инсталирана PWA и публикувана push услуга.",
+  "Apple Health": "Apple Health",
+  "Connected through the FitTrack iOS app.":
+    "Свързано чрез iOS приложението FitTrack.",
+  "Connect weight, steps, active energy and workouts.":
+    "Свържи тегло, крачки, активни калории и тренировки.",
+  "Apple Health requires the signed FitTrack iOS app. Safari and web apps cannot access HealthKit directly.":
+    "Apple Health изисква подписано iOS приложение FitTrack. Safari и уеб приложенията нямат директен достъп до HealthKit.",
+  "Connect Apple Health": "Свържи Apple Health",
+  "Apple Health connected": "Apple Health е свързан",
+  "Apple Health synchronized": "Apple Health е синхронизиран",
+  "Sync last 30 days": "Синхронизирай последните 30 дни",
+  "Saved in FitTrack; Apple Health sync failed":
+    "Записано във FitTrack; синхронизацията с Apple Health не успя",
+  samples: "записа",
+  steps: "крачки",
+  workouts: "тренировки",
+  "weight records": "записа за тегло",
+});
+Object.assign(dictionary, {
   Programs: "Програми",
   Program: "Програма",
   "New program": "Нова програма",

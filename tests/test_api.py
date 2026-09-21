@@ -220,3 +220,48 @@ def test_food_provider_errors(client, monkeypatch, status, payload, expected):
 def test_missing_provider_key(client):
     assert client.post('/api/food/analyze', json={'description': '100 g rice'}).status_code == 503
     assert client.post('/api/food', json=FOOD).status_code == 200
+
+
+def test_barcode_lookup_maps_open_food_facts_per_100g(client, monkeypatch):
+    original = httpx.AsyncClient
+    seen = {}
+    def handler(request):
+        seen['url'] = str(request.url)
+        seen['agent'] = request.headers.get('user-agent')
+        return httpx.Response(200, json={'status': 1, 'product': {
+            'product_name': 'Protein pudding',
+            'brands': 'Test brand',
+            'nutriments': {
+                'energy-kcal_100g': 92,
+                'proteins_100g': 10,
+                'fat_100g': 1.5,
+                'carbohydrates_100g': 8,
+                'sugars_100g': 4,
+            },
+        }})
+    monkeypatch.setattr(server.httpx, 'AsyncClient', lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    data = client.get('/api/food/barcode/3800014268048').json()
+    assert data['food_name'] == 'Test brand · Protein pudding'
+    assert data['calories'] == 92 and data['protein'] == 10
+    assert data['fiber'] is None and data['missing'] == ['fiber']
+    assert 'fields=' in seen['url'] and seen['agent'].startswith('FitTrack/')
+    assert server.records('food') == []
+
+
+@pytest.mark.parametrize('barcode', ['abc', '1234567', '123456789012345'])
+def test_barcode_validation(client, monkeypatch, barcode):
+    monkeypatch.setattr(server.httpx, 'AsyncClient', lambda **_: pytest.fail('Invalid barcode must not reach provider'))
+    assert client.get('/api/food/barcode/' + barcode).status_code == 422
+
+
+def test_barcode_not_found_and_incomplete(client, monkeypatch):
+    original = httpx.AsyncClient
+    replies = iter([
+        {'status': 0},
+        {'status': 1, 'product': {'product_name': 'Unknown', 'nutriments': {'energy-kcal_100g': 100}}},
+    ])
+    def handler(_):
+        return httpx.Response(200, json=next(replies))
+    monkeypatch.setattr(server.httpx, 'AsyncClient', lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    assert client.get('/api/food/barcode/12345678').status_code == 404
+    assert client.get('/api/food/barcode/12345678').status_code == 422

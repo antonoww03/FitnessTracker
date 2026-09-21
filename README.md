@@ -41,6 +41,10 @@ For a production build, run `npm run build` in `frontend`. Configure `REACT_APP_
 ## Functionality
 
 - Food: manual entry for all six macros, or optional USDA lookup using `USDA_API_KEY`. Lookup accepts English ingredient names with explicit grams/kg, e.g. `200 g chicken breast; 100 g cooked rice`. Results are estimated matches; review the matched food and edit values before confirming. Counts, cups, free-form mixed meals and non-English descriptions are not silently guessed. Missing data/provider errors do not create zero-calorie meals. Lookup itself never saves a meal.
+- Packaged food can be scanned with the device camera or entered as an 8–14
+  digit barcode. The backend reads per-100 g data from Open Food Facts; no
+  provider key is required. Missing label values remain visibly empty and must
+  be checked before saving. Camera access requires HTTPS or local loopback.
 - Training: eight activity types, duration, exercises with sets/reps/load, and comparison with the most recent session of the same type.
 - Water: quick/custom entry, daily reset and consecutive-day streak. A streak continues from yesterday if the selected date has no water; future dates never extend it. The daily target is configurable in Settings.
 - Weight: set/update one measurement per date; read latest or selected date; deletion supported by API.
@@ -122,6 +126,22 @@ Training supports saved programs with weekday schedules, individual completed se
 Recipes calculate nutrition from ingredient weights and per-100 g values, then log any number of portions. Body measurements track waist, chest, arm and thigh by date. Settings defines separate training/rest nutrition targets; Today selects the day's type and program.
 
 The production build includes a manifest and service worker. Serve it over HTTPS (or local loopback for development). Open it online first, enable offline storage in Settings, and visit the screens to cache their data. Offline food/water/weight/training writes enter a per-account IndexedDB queue. Cached totals reflect the last successful fetch until synchronization. Programs, recipes, measurements, edits and deletes require connectivity. Queue retries use server-side operation IDs to avoid duplicate writes. Review or delete pending entries in Settings; signing out removes cached personal data and the unfinished workout from this device. Device storage is not an encrypted backup.
+
+Settings also supports per-device water, workout and weigh-in reminders. The
+permission request is always triggered by an explicit button, a test
+notification is available, and duplicate reminder slots are suppressed.
+In-page scheduling works while FitTrack is running. Reliable delivery after the
+app is closed additionally requires an installed Home Screen PWA and a deployed
+Web Push scheduler; the repository does not claim that local timers can wake a
+closed browser.
+
+Apple Health is available only through the signed iOS wrapper contract in
+`ios/`. Safari and ordinary PWAs cannot call HealthKit directly. The bridge
+requests the minimum declared types, restricts messages to the configured
+FitTrack host, reads 30-day weight/workout/step/active-energy totals and writes
+newly logged FitTrack weight and workouts after explicit authorization. Xcode
+signing, HealthKit entitlement, usage descriptions and App Store privacy
+declarations are required; see `ios/README.md`.
 
 Registration displays a recovery code once. Existing accounts can generate one in Settings after entering their password; generating another invalidates the old code. Forgotten-password recovery requires the username and this code, consumes it and revokes existing sessions. There is no email delivery integration. Save the code privately; generate a fresh one after use.
 

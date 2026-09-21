@@ -1,16 +1,117 @@
 import { t } from "@/lib/i18n";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { Loader2 } from "lucide-react";
+import { Camera, Loader2, ScanBarcode, X } from "lucide-react";
 import { toast } from "sonner";
 import { API, errorMessage } from "@/lib/api";
 
 import { MealType } from "./DailyTools";
 const MACROS = ["calories", "protein", "fat", "carbs", "sugar", "fiber"];
 const emptyMacros = () => Object.fromEntries(MACROS.map((key) => [key, ""]));
+
+function BarcodeScanner({ busy, onCode }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [cameraError, setCameraError] = useState("");
+  const video = useRef(null);
+  const controls = useRef(null);
+  const stop = () => {
+    controls.current?.stop();
+    controls.current = null;
+    setOpen(false);
+  };
+  useEffect(() => () => controls.current?.stop(), []);
+  async function start() {
+    setOpen(true);
+    setCameraError("");
+    try {
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      const reader = new BrowserMultiFormatReader();
+      controls.current = await reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: "environment" } }, audio: false },
+        video.current,
+        (result, error, scanner) => {
+          if (!result) return;
+          const value = result.getText();
+          scanner.stop();
+          controls.current = null;
+          setOpen(false);
+          setCode(value);
+          onCode(value);
+        },
+      );
+    } catch {
+      setCameraError(
+        t(
+          "Camera scanning is unavailable. Allow camera access or enter the barcode.",
+        ),
+      );
+    }
+  }
+  return (
+    <section className="ft-barcode" data-testid="barcode-scanner">
+      <div className="ft-row">
+        <label className="ft-grow">
+          {t("Barcode")}
+          <Input
+            inputMode="numeric"
+            autoComplete="off"
+            pattern="[0-9]*"
+            minLength={8}
+            maxLength={14}
+            value={code}
+            disabled={busy}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            placeholder="3800014268048"
+            aria-label={t("Barcode")}
+          />
+        </label>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy || !/^\d{8,14}$/.test(code)}
+          onClick={() => onCode(code)}
+        >
+          <ScanBarcode className="h-4 w-4 mr-2" />
+          {t("Find")}
+        </Button>
+      </div>
+      {!open ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={start}
+          className="w-full mt-2"
+          data-testid="open-barcode-camera"
+        >
+          <Camera className="h-4 w-4 mr-2" />
+          {t("Scan with camera")}
+        </Button>
+      ) : (
+        <div className="ft-camera">
+          <video ref={video} muted playsInline aria-label={t("Barcode camera")} />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={stop}
+            aria-label={t("Close camera")}
+          >
+            <X className="h-4 w-4 mr-2" />
+            {t("Close")}
+          </Button>
+        </div>
+      )}
+      {cameraError && <p role="alert">{cameraError}</p>}
+      <p className="ft-muted">
+        {t("Product data comes from Open Food Facts. Check the label before saving.")}
+      </p>
+    </section>
+  );
+}
 
 export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
   const [mealType, setMealType] = useState("snack");
@@ -21,6 +122,30 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
   const [grams, setGrams] = useState(100);
   const [per100, setPer100] = useState(false);
   const [busy, setBusy] = useState(false);
+  const lookupBarcode = async (barcode) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await axios.get(`${API}/food/barcode/${barcode}`);
+      setDescription(data.food_name);
+      setAnalysis(data);
+      setPer100(true);
+      setGrams(100);
+      setValues(
+        Object.fromEntries(
+          MACROS.map((key) => [key, data[key] == null ? "" : data[key]]),
+        ),
+      );
+      if (data.missing?.length)
+        toast.warning(
+          t("Fill the missing nutrition values from the product label."),
+        );
+    } catch (error) {
+      toast.error(errorMessage(error, t("Product could not be found.")));
+    } finally {
+      setBusy(false);
+    }
+  };
   const analyze = async () => {
     if (busy || !description.trim()) return;
     setBusy(true);
@@ -101,6 +226,8 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
         {t("Log Food")}
       </h2>
       <MealType value={mealType} onChange={setMealType} />
+      <BarcodeScanner busy={busy} onCode={lookupBarcode} />
+      <div className="ft-or">{t("or enter food")}</div>
       <Textarea
         aria-label={t("Food description")}
         disabled={busy}

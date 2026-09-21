@@ -135,6 +135,10 @@ async function input(el, value) {
   assert(!d.getElementById("fittrack-preview-app").textContent.includes("NaN"));
   await click(id("tab-dashboard"));
   await click(id("add-entry-button"));
+  const barcode = id("barcode-scanner");
+  await input(barcode.querySelector('input[aria-label="Barcode"]'), "3800014268048");
+  await click(btn("Find", barcode));
+  assert(id("food-analysis-result").textContent.includes("Demo protein pudding"));
   await input(id("food-description-input"), "draft");
   w.confirm = () => false;
   await click(id("tab-history"));
@@ -252,7 +256,7 @@ async function input(el, value) {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: saved meal/logging, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target, programs, completed sets, rest timer, records, recipes, measurements, warm-ups, supersets, set notes, exercise charts, favorites, portion copying, calendar, sync status and dashboard visibility.",
+    "PASS: saved meal/logging, barcode lookup, editing, history filter, delete/undo, four progress charts, unsaved navigation guard, BG language, light theme, water target, programs, completed sets, rest timer, records, recipes, measurements, warm-ups, supersets, set notes, exercise charts, favorites, portion copying, calendar, sync status and dashboard visibility.",
   );
   dom.window.close();
 })().catch((e) => {

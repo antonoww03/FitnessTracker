@@ -105,6 +105,10 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
       .getByText(/1 pending entries/)
       .waitFor();
     await context.setOffline(false);
+    // CDP changes network emulation but does not consistently emit the
+    // browser's online event. Dispatch it explicitly to exercise the same
+    // synchronization path used by a physical device after reconnection.
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await page.waitForFunction(
       () =>
         !document

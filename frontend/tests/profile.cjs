@@ -22,7 +22,7 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
     for (const [label, value] of [['First name','Alex'],['Last name','Test'],['Age','25'],['Height (cm)','180'],['Weight (kg)','75.5']]) {
       await page.getByLabel(label,{exact:true}).fill(value);
     }
-    await page.getByLabel('Gender',{exact:true}).selectOption('male');
+    await page.locator('[name="gender"]').selectOption('male');
     await page.locator('input[type=file]').first().setInputFiles({name:'photo.png',mimeType:'image/png',buffer:fs.readFileSync(path.join(__dirname,'../public/icon-192.png'))});
     await page.locator('.ft-profile-avatar img').waitFor();
     async function save() {

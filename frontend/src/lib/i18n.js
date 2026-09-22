@@ -286,12 +286,15 @@ Object.assign(dictionary, {
   Time: "Час",
   "Save reminders": "Запази напомнянията",
   "Reminder settings saved": "Напомнянията са запазени",
+  "Background reminders enabled": "Фоновите напомняния са включени",
+  "Background reminders are active on this device.":
+    "Фоновите напомняния са активни на това устройство.",
+  "Install FitTrack on your Home Screen and save reminders to enable background delivery when the server supports Web Push.":
+    "Инсталирай FitTrack на началния екран и запази напомнянията, за да включиш фоновото доставяне, когато сървърът поддържа Web Push.",
   "Could not save reminder settings": "Напомнянията не бяха запазени",
   "Send test notification": "Изпрати тестово известие",
   "FitTrack test reminder": "Тестово FitTrack напомняне",
   "Your reminders are working.": "Напомнянията работят.",
-  "Device reminders run while FitTrack is open. Background delivery requires the installed PWA and a deployed push service.":
-    "Напомнянията работят, докато FitTrack е отворен. За работа на заден фон са нужни инсталирана PWA и публикувана push услуга.",
   "Apple Health": "Apple Health",
   "Connected through the FitTrack iOS app.":
     "Свързано чрез iOS приложението FitTrack.",

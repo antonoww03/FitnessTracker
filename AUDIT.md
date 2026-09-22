@@ -77,14 +77,21 @@ cross-browser ZXing camera scanner with manual-code fallback, and editable
 per-100 g results. Added per-device water/workout/weigh-in reminders, explicit
 notification permission, test delivery, duplicate-slot protection and service
 worker notification navigation. Local scheduling cannot wake a closed browser;
-full background delivery still needs a deployed Web Push scheduler.
+full background delivery originally still needed a deployed Web Push scheduler.
+The follow-up adds authenticated push subscriptions, validated reminder/timezone
+settings, VAPID delivery, transactional duplicate prevention, expired-endpoint
+cleanup and a service-worker push handler. Deployment must provide the VAPID
+secrets and keep exactly one embedded worker enabled.
 
 Apple Health cannot be accessed from the web platform. The app now exposes an
 honest capability-gated Settings option plus a host-restricted native HealthKit
 bridge and minimal iOS WebView shell under `ios/`. It reads aggregate HealthKit
 data and, after explicit authorization, writes new FitTrack weight/workouts.
 Building and signing that native target with the HealthKit entitlement remains
-an Apple/Xcode deployment step, not something the web CI can certify.
+an Apple/Xcode deployment step, not something the web CI can certify. A complete
+XcodeGen project scaffold, Info.plist, app entry point and entitlements are now
+included. The production URL, bundle ID, signing team, final app icon/store
+metadata and physical-device approval remain external release steps.
 
 ## My Profile
 

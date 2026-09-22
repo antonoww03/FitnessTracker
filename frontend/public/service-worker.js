@@ -1,5 +1,5 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v5";
+const CACHE = "fittrack-shell-v6";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -89,5 +89,22 @@ self.addEventListener("notificationclick", (event) => {
         }
         return clients.openWindow(url);
       }),
+  );
+});
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() || {};
+  } catch {
+    data = { body: event.data?.text() || "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "FitTrack", {
+      body: data.body || "",
+      tag: data.tag || "fittrack-reminder",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: data.url || "/" },
+    }),
   );
 });

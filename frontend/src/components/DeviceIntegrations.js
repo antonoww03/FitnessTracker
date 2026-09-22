@@ -5,10 +5,13 @@ import { t } from "@/lib/i18n";
 import {
   checkReminders,
   loadReminders,
+  notificationPermission,
   notificationSupport,
   requestNotificationPermission,
+  refreshNotificationPermission,
   saveReminders,
   showDeviceNotification,
+  syncBackgroundPush,
 } from "@/lib/reminders";
 import {
   connectHealth,
@@ -35,18 +38,22 @@ export function useReminderEngine(userId) {
 export function DeviceIntegrations({ user }) {
   const [reminders, setReminders] = useState(() => loadReminders(user.id));
   const [permission, setPermission] = useState(
-    notificationSupport() ? Notification.permission : "unsupported",
+    notificationSupport() ? notificationPermission(user.id) : "unsupported",
   );
   const [connected, setConnected] = useState(() => healthConnected(user.id));
   const [healthSummary, setHealthSummary] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pushStatus, setPushStatus] = useState("unknown");
+  useEffect(() => {
+    refreshNotificationPermission(user.id).then(setPermission).catch(() => {});
+  }, [user.id]);
   const update = (type, patch) =>
     setReminders({
       ...reminders,
       [type]: { ...reminders[type], ...patch },
     });
   async function allowNotifications() {
-    const result = await requestNotificationPermission();
+    const result = await requestNotificationPermission(user.id);
     setPermission(result);
     if (result === "granted")
       await showDeviceNotification(
@@ -54,6 +61,22 @@ export function DeviceIntegrations({ user }) {
         t("FitTrack can now show your device reminders."),
         "fittrack-test",
       );
+  }
+  async function saveReminderSettings() {
+    setBusy(true);
+    try {
+      if (!saveReminders(user.id, reminders))
+        throw new Error(t("Could not save reminder settings"));
+      const status = await syncBackgroundPush(reminders);
+      setPushStatus(status);
+      toast.success(
+        t(status === "enabled" ? "Background reminders enabled" : "Reminder settings saved"),
+      );
+    } catch (error) {
+      toast.error(error.message || t("Could not save reminder settings"));
+    } finally {
+      setBusy(false);
+    }
   }
   async function connect() {
     setBusy(true);
@@ -172,12 +195,8 @@ export function DeviceIntegrations({ user }) {
         ))}
         <button
           className="ft-primary"
-          disabled={permission !== "granted"}
-          onClick={() => {
-            if (saveReminders(user.id, reminders))
-              toast.success(t("Reminder settings saved"));
-            else toast.error(t("Could not save reminder settings"));
-          }}
+          disabled={permission !== "granted" || busy}
+          onClick={saveReminderSettings}
         >
           {t("Save reminders")}
         </button>
@@ -196,7 +215,9 @@ export function DeviceIntegrations({ user }) {
         </button>
         <p className="ft-muted">
           {t(
-            "Device reminders run while FitTrack is open. Background delivery requires the installed PWA and a deployed push service.",
+            pushStatus === "enabled"
+              ? "Background reminders are active on this device."
+              : "Install FitTrack on your Home Screen and save reminders to enable background delivery when the server supports Web Push.",
           )}
         </p>
       </section>

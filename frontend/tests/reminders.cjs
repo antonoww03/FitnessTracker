@@ -9,7 +9,10 @@ const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "ft-reminders-"));
 const entry = path.join(temporary, "entry.js");
 fs.writeFileSync(
   entry,
-  `import * as reminders from "${path.join(root, "src/lib/reminders.js")}"; window.testing=reminders;`,
+  `import axios from "${path.join(root, "node_modules/axios/index.js")}"; import * as reminders from "${path.join(root, "src/lib/reminders.js")}";
+   window.pushRequests=[];
+   axios.defaults.adapter=async config=>{ window.pushRequests.push(config); return {data: config.method==='get'?{enabled:true,public_key:'AQID'}:{ok:true},status:200,statusText:'OK',headers:{},config}; };
+   window.testing=reminders;`,
 );
 execFileSync(
   "npx",
@@ -19,6 +22,7 @@ execFileSync(
     "esbuild",
     entry,
     "--bundle",
+    '--define:process.env.REACT_APP_BACKEND_URL=""',
     `--outfile=${temporary}/bundle.js`,
   ],
   { cwd: root, stdio: "pipe" },
@@ -39,9 +43,23 @@ Object.defineProperty(w.navigator, "serviceWorker", {
   value: {
     ready: Promise.resolve({
       showNotification: async (title, options) => shown.push({ title, options }),
+      pushManager: {
+        getSubscription: async () => null,
+        subscribe: async (options) => ({
+          endpoint: "https://push.example/test",
+          toJSON: () => ({
+            endpoint: "https://push.example/test",
+            expirationTime: null,
+            keys: { p256dh: "x".repeat(24), auth: "y".repeat(12) },
+          }),
+          unsubscribe: async () => true,
+          options,
+        }),
+      },
     }),
   },
 });
+Object.defineProperty(w, "PushManager", { value: class PushManager {} });
 w.eval(fs.readFileSync(path.join(temporary, "bundle.js"), "utf8"));
 const api = w.testing;
 (async () => {
@@ -61,6 +79,9 @@ const api = w.testing;
   await api.checkReminders("alice", new w.Date(2026, 8, 21, 10, 0, 0));
   assert.equal(shown.length, 4, "Next water interval is sent");
   assert.equal(await api.requestNotificationPermission(), "granted");
+  assert.equal(await api.syncBackgroundPush(settings), "enabled");
+  assert.equal(w.pushRequests.length, 2);
+  assert(JSON.parse(w.pushRequests[1].data).timezone);
   console.log(
     "PASS: reminder settings, permission, schedules and duplicate prevention.",
   );
@@ -73,4 +94,3 @@ const api = w.testing;
     dom.window.close();
     fs.rmSync(temporary, { recursive: true, force: true });
   });
-

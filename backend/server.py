@@ -16,6 +16,8 @@ import uuid
 import hashlib
 import secrets
 import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import urlparse
 from contextvars import ContextVar
 
 import httpx
@@ -60,6 +62,7 @@ def database():
             connection.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL)')
             connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, until REAL NOT NULL)')
             connection.execute('CREATE TABLE IF NOT EXISTS operations (owner TEXT NOT NULL, op TEXT NOT NULL, digest TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(owner, op))')
+            connection.execute('CREATE TABLE IF NOT EXISTS push_deliveries (subscription_id TEXT NOT NULL, slot TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(subscription_id, slot))')
             yield connection
     finally:
         connection.close()
@@ -543,7 +546,7 @@ async def authenticate(request: Request, call_next):
         allowed = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
         if origin and origin != str(request.base_url).rstrip('/') and origin not in allowed:
             return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
-    if path in ('/api/auth/login', '/api/auth/register', '/api/auth/reset-password'):
+    if path in ('/api', '/api/', '/api/auth/login', '/api/auth/register', '/api/auth/reset-password'):
         return await call_next(request)
     token = request.cookies.get('fittrack_session', '')
     with database() as db:
@@ -682,6 +685,171 @@ def get_profile():
 def update_profile(body: Profile):
     save('profile', body.model_dump(), 'profile')
     return body
+
+
+class PushKeys(Model):
+    p256dh: str = Field(min_length=20, max_length=512)
+    auth: str = Field(min_length=8, max_length=256)
+
+
+class PushSubscription(Model):
+    endpoint: str = Field(pattern=r'^https://', max_length=2048)
+    expirationTime: float | None = None
+    keys: PushKeys
+    timezone: str = Field(min_length=1, max_length=80)
+    language: Literal['en', 'bg'] = 'en'
+    reminders: dict
+
+    @field_validator('endpoint')
+    @classmethod
+    def valid_push_endpoint(cls, value):
+        parsed = urlparse(value)
+        host = (parsed.hostname or '').lower()
+        allowed = (
+            'fcm.googleapis.com',
+            'android.googleapis.com',
+            'web.push.apple.com',
+            'push.services.mozilla.com',
+            'notify.windows.com',
+        )
+        if parsed.username or parsed.password or parsed.port not in (None, 443):
+            raise ValueError('Unsupported push endpoint')
+        if not any(host == domain or host.endswith('.' + domain) for domain in allowed):
+            raise ValueError('Unsupported push endpoint')
+        return value
+
+    @field_validator('timezone')
+    @classmethod
+    def valid_timezone(cls, value):
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError('Unknown timezone') from None
+        return value
+
+    @field_validator('reminders')
+    @classmethod
+    def valid_reminders(cls, value):
+        return ReminderSettings.model_validate(value).model_dump()
+
+
+class TimedReminder(Model):
+    enabled: bool = False
+    time: str = Field(default='08:00', pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+
+
+class WaterReminder(Model):
+    enabled: bool = False
+    everyMinutes: int = Field(default=120, ge=30, le=480)
+    start: str = Field(default='08:00', pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+    end: str = Field(default='22:00', pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+
+
+class ReminderSettings(Model):
+    water: WaterReminder = Field(default_factory=WaterReminder)
+    workout: TimedReminder = Field(default_factory=lambda: TimedReminder(time='18:00'))
+    weighIn: TimedReminder = Field(default_factory=TimedReminder)
+
+
+def push_enabled():
+    return bool(os.getenv('VAPID_PUBLIC_KEY') and os.getenv('VAPID_PRIVATE_KEY') and os.getenv('VAPID_SUBJECT'))
+
+
+@api_router.get('/push/public-key')
+def push_public_key():
+    return {'enabled': push_enabled(), 'public_key': os.getenv('VAPID_PUBLIC_KEY', '') if push_enabled() else ''}
+
+
+@api_router.put('/push/subscription')
+def update_push_subscription(body: PushSubscription):
+    if not push_enabled():
+        raise HTTPException(503, 'Background notifications are not configured')
+    identifier = hashlib.sha256(body.endpoint.encode()).hexdigest()
+    return save('push_subscription', body.model_dump(), identifier)
+
+
+@api_router.delete('/push/subscription')
+def delete_push_subscription(endpoint: str):
+    identifier = hashlib.sha256(endpoint.encode()).hexdigest()
+    result = remove('push_subscription', identifier)
+    with database() as db:
+        db.execute('DELETE FROM push_deliveries WHERE subscription_id=?', (identifier,))
+    return result
+
+
+def _reminder_minute(value):
+    hours, minutes = map(int, value.split(':'))
+    return hours * 60 + minutes
+
+
+def due_push_notifications(now=None):
+    """Claim and return due reminder deliveries across all user subscriptions."""
+    now = now or datetime.now(timezone.utc)
+    with database() as db:
+        rows = db.execute("SELECT id,payload FROM records WHERE kind LIKE '%:push_subscription'").fetchall()
+        db.execute('DELETE FROM push_deliveries WHERE created<?', (time.time()-14*86400,))
+        due = []
+        for identifier, raw in rows:
+            try:
+                stored = json.loads(raw)
+                subscription = PushSubscription.model_validate({
+                    key: value for key, value in stored.items()
+                    if key not in ('id', 'timestamp')
+                })
+                local = now.astimezone(ZoneInfo(subscription.timezone))
+                current = local.hour * 60 + local.minute
+                day = local.date().isoformat()
+                reminders = ReminderSettings.model_validate(subscription.reminders)
+                candidates = []
+                water = reminders.water
+                start, end = _reminder_minute(water.start), _reminder_minute(water.end)
+                if water.enabled and start <= current <= end and (current-start) % water.everyMinutes == 0:
+                    candidates.append(('water', f'{day}-water-{(current-start)//water.everyMinutes}'))
+                for name, item in [('workout', reminders.workout), ('weighIn', reminders.weighIn)]:
+                    if item.enabled and current == _reminder_minute(item.time):
+                        candidates.append((name, f'{day}-{name}'))
+                language = subscription.language
+                copy = {
+                    'water': ('Време е за вода', 'Запиши чаша вода и продължи към дневната си цел.') if language == 'bg' else ('Time for water', 'Log a glass and keep your daily target moving.'),
+                    'workout': ('Напомняне за тренировка', 'Планираната ти тренировка е готова.') if language == 'bg' else ('Workout reminder', 'Your planned training is ready.'),
+                    'weighIn': ('Напомняне за тегло', 'Запиши теглото си за последователно проследяване.') if language == 'bg' else ('Weigh-in reminder', 'Record your weight for a consistent trend.'),
+                }
+                for kind, slot in candidates:
+                    claimed = db.execute('INSERT OR IGNORE INTO push_deliveries VALUES (?,?,?)', (identifier, slot, time.time())).rowcount
+                    if claimed:
+                        title, body = copy[kind]
+                        due.append((identifier, subscription, slot, {'title': title, 'body': body, 'tag': f'fittrack-{kind}', 'url': '/'}))
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                continue
+    return due
+
+
+def send_due_push_notifications(now=None):
+    if not push_enabled():
+        return 0
+    from pywebpush import WebPushException, webpush
+    sent = 0
+    for identifier, subscription, slot, payload in due_push_notifications(now):
+        try:
+            webpush(
+                subscription_info={'endpoint': subscription.endpoint, 'keys': subscription.keys.model_dump()},
+                data=json.dumps(payload),
+                vapid_private_key=os.environ['VAPID_PRIVATE_KEY'],
+                vapid_claims={'sub': os.environ['VAPID_SUBJECT']},
+                ttl=3600,
+            )
+            sent += 1
+        except WebPushException as error:
+            status = getattr(error.response, 'status_code', None)
+            with database() as db:
+                if status in (404, 410):
+                    db.execute("DELETE FROM records WHERE id=? AND kind LIKE '%:push_subscription'", (identifier,))
+                else:
+                    db.execute('DELETE FROM push_deliveries WHERE subscription_id=? AND slot=?', (identifier, slot))
+        except Exception:
+            with database() as db:
+                db.execute('DELETE FROM push_deliveries WHERE subscription_id=? AND slot=?', (identifier, slot))
+    return sent
 
 
 @api_router.get('/preferences')
@@ -874,14 +1042,14 @@ app.include_router(advanced_router, prefix='/api')
 # Daily consistent SQLite backups, including accounts, retained locally for seven days.
 # An operator should copy this private directory to independent storage.
 @app.on_event('startup')
-async def start_backups():
+async def start_services():
     import asyncio
     import logging
-    if os.getenv('FITTRACK_AUTO_BACKUP', '1') != '1':
-        return
+    app.state.backup_task = None
+    app.state.push_task = None
     with database():
         pass
-    async def loop():
+    async def backup_loop():
         from backend.maintenance import backup_database
         directory = Path(os.getenv('FITTRACK_BACKUP_DIR', str(DB_PATH.parent / 'backups')))
         while True:
@@ -893,16 +1061,27 @@ async def start_backups():
             except Exception:
                 logging.getLogger('fittrack').exception('Automatic backup failed')
             await asyncio.sleep(86400)
-    app.state.backup_task = asyncio.create_task(loop())
+    async def push_loop():
+        while True:
+            try:
+                await asyncio.to_thread(send_due_push_notifications)
+            except Exception:
+                logging.getLogger('fittrack').exception('Push reminder delivery failed')
+            await asyncio.sleep(30)
+    if os.getenv('FITTRACK_AUTO_BACKUP', '1') == '1':
+        app.state.backup_task = asyncio.create_task(backup_loop())
+    if push_enabled() and os.getenv('FITTRACK_PUSH_WORKER', '1') == '1':
+        app.state.push_task = asyncio.create_task(push_loop())
 
 
 @app.on_event('shutdown')
-async def stop_backups():
+async def stop_services():
     import asyncio
-    task = getattr(app.state, 'backup_task', None)
-    if task:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    for name in ('backup_task', 'push_task'):
+        task = getattr(app.state, name, None)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass

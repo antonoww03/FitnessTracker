@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 from backend import server
-from backend.maintenance import backup_database, migrate_legacy
+from backend.maintenance import backup_database, generate_vapid_keys, migrate_legacy
 
 DAY='2026-09-17'
 FOOD=dict(date=DAY,food_name='Rice',food_description='100 g rice',grams=100,calories=130,protein=3,fat=1,carbs=28,sugar=0,fiber=1)
@@ -110,6 +110,14 @@ def test_legacy_never_claimed_on_registration(clients):
     assert migrate_legacy('alice')==1
     assert len(a.get('/api/food?date='+DAY).json())==1
     assert b.get('/api/food?date='+DAY).json()==[]
+
+
+def test_vapid_key_generation():
+    import base64
+    keys=generate_vapid_keys()
+    decode=lambda value: base64.urlsafe_b64decode(value+'='*((4-len(value)%4)%4))
+    assert len(decode(keys['VAPID_PRIVATE_KEY']))==32
+    assert len(decode(keys['VAPID_PUBLIC_KEY']))==65
 
 
 def test_login_rate_limit(clients):

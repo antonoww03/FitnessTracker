@@ -3,6 +3,7 @@ import axios from "axios";
 import { API, errorMessage } from "@/lib/api";
 import { t, storage } from "@/lib/i18n";
 import { toast } from "sonner";
+import { removeBackgroundPush } from "@/lib/reminders";
 import {
   installOffline,
   setOfflineUser,
@@ -200,6 +201,7 @@ export function Account({ children }) {
       )
         return;
       try {
+        await removeBackgroundPush().catch(() => {});
         await axios.post(`${API}/auth/logout`);
         await clearOffline(user.id);
         storage.set(`fittrack-workout:${user.id}`, "null");

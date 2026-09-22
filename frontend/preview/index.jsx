@@ -362,6 +362,8 @@ axios.defaults.adapter = async (config) => {
   } else if (path === "/profile") {
     if (method === "PUT") profile = { ...body };
     data = { ...profile };
+  } else if (path === "/push/public-key") {
+    data = { enabled: false, public_key: "" };
   } else if (path === "/history") {
     data = ["food", "training", "water", "weight"]
       .flatMap((kind) => db[kind].map((r) => ({ ...r, kind })))

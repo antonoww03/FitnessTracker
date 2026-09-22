@@ -249,6 +249,9 @@ def change_password(body: PasswordChange, request: Request, response: Response):
 def logout_all(body: RecoveryRequest,request: Request,response: Response):
     with s.database() as db:
         verify_password(body,request,db)
+        subscriptions=db.execute('SELECT id FROM records WHERE kind=?',(s.scoped('push_subscription'),)).fetchall()
+        db.executemany('DELETE FROM push_deliveries WHERE subscription_id=?',subscriptions)
+        db.execute('DELETE FROM records WHERE kind=?',(s.scoped('push_subscription'),))
         db.execute('DELETE FROM sessions WHERE user_id=?',(s.CURRENT_USER.get(),))
     response.delete_cookie('fittrack_session',path='/api')
     return {'ok':True}
@@ -261,6 +264,8 @@ def delete_account(body: AccountDeletion,request: Request,response: Response):
         account=verify_password(body,request,db)
         if body.confirm_username != account[0]: raise HTTPException(422,'Type your username to confirm')
         # Match the exact UUID prefix; never interpolate a LIKE pattern from a username.
+        subscriptions=db.execute('SELECT id FROM records WHERE kind=?',(s.scoped('push_subscription'),)).fetchall()
+        db.executemany('DELETE FROM push_deliveries WHERE subscription_id=?',subscriptions)
         db.execute('DELETE FROM records WHERE substr(kind,1,?)=?',(len(owner)+1,owner+':'))
         db.execute('DELETE FROM sessions WHERE user_id=?',(owner,))
         db.execute('DELETE FROM operations WHERE owner=?',(owner,))

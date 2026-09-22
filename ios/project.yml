@@ -1,0 +1,26 @@
+name: FitTrack
+options:
+  bundleIdPrefix: com.example
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: 16.4
+    SWIFT_VERSION: 5.0
+targets:
+  FitTrack:
+    type: application
+    platform: iOS
+    sources:
+      - HealthKitBridge.swift
+      - FitTrackViewController.swift
+      - path: FitTrack
+        excludes:
+          - Info.plist
+          - FitTrack.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.fittrack
+        CODE_SIGN_ENTITLEMENTS: FitTrack/FitTrack.entitlements
+        INFOPLIST_FILE: FitTrack/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - sdk: HealthKit.framework

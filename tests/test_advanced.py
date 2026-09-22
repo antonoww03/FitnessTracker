@@ -23,6 +23,12 @@ def test_program_plan_goals_isolated(clients):
     assert a.post('/api/programs',json={**PROGRAM,'weekdays':[7]}).status_code==422
 
 
+def test_health_check_is_public(clients):
+    a,_=clients
+    a.cookies.clear()
+    assert a.get('/api').json()=={'status':'ok'}
+
+
 def test_recipe_scale_and_validation(clients):
     a,b=clients
     recipe=a.post('/api/recipes',json=RECIPE).json()
@@ -176,6 +182,27 @@ def test_profile_is_private_validated_and_backed_up(clients):
     assert backup['records']['profile'][0]['first_name']=='Ivan'
     assert b.post('/api/backup/restore',json=backup).status_code==200
     assert b.get('/api/profile').json()['height_cm']==181
+
+
+def test_push_subscription_validation_isolation_and_due_claim(clients, monkeypatch):
+    from datetime import datetime, timezone
+    a,b=clients
+    monkeypatch.setenv('VAPID_PUBLIC_KEY','public-test-key')
+    monkeypatch.setenv('VAPID_PRIVATE_KEY','private-test-key')
+    monkeypatch.setenv('VAPID_SUBJECT','mailto:test@example.com')
+    settings={
+        'water':{'enabled':True,'everyMinutes':120,'start':'08:00','end':'22:00'},
+        'workout':{'enabled':True,'time':'08:00'},
+        'weighIn':{'enabled':False,'time':'08:00'},
+    }
+    subscription={'endpoint':'https://fcm.googleapis.com/push/subscription-a','keys':{'p256dh':'x'*24,'auth':'y'*12},'timezone':'UTC','language':'bg','reminders':settings}
+    assert a.put('/api/push/subscription',json=subscription).status_code==200
+    assert b.delete('/api/push/subscription',params={'endpoint':subscription['endpoint']}).status_code==404
+    assert a.put('/api/push/subscription',json={**subscription,'timezone':'Invalid/Zone'}).status_code==422
+    assert a.put('/api/push/subscription',json={**subscription,'endpoint':'https://127.0.0.1/private'}).status_code==422
+    due=server.due_push_notifications(datetime(2026,9,22,8,0,tzinfo=timezone.utc))
+    assert len(due)==2 and {row[3]['tag'] for row in due}=={'fittrack-water','fittrack-workout'}
+    assert server.due_push_notifications(datetime(2026,9,22,8,0,tzinfo=timezone.utc))==[]
 
 
 def test_password_spaces_are_significant(clients):

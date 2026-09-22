@@ -1,5 +1,6 @@
 """Operator tools: consistent DB backups and explicit legacy-data migration."""
 import argparse
+import base64
 import os
 import sqlite3
 from pathlib import Path
@@ -30,12 +31,27 @@ def migrate_legacy(username):
         return db.execute("UPDATE records SET kind=? || ':' || kind WHERE instr(kind, ':')=0", (user[0],)).rowcount
 
 
+def generate_vapid_keys():
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    key = ec.generate_private_key(ec.SECP256R1())
+    private = key.private_numbers().private_value.to_bytes(32, 'big')
+    public = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+    encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b'=').decode()
+    return {'VAPID_PUBLIC_KEY': encode(public), 'VAPID_PRIVATE_KEY': encode(private)}
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['backup', 'migrate-legacy'])
-    parser.add_argument('target')
+    parser.add_argument('action', choices=['backup', 'migrate-legacy', 'generate-vapid'])
+    parser.add_argument('target', nargs='?')
     args = parser.parse_args()
-    if args.action == 'backup':
+    if args.action == 'generate-vapid':
+        for name, value in generate_vapid_keys().items():
+            print(f'{name}={value}')
+    elif not args.target:
+        parser.error('target is required for this action')
+    elif args.action == 'backup':
         print(backup_database(args.target))
     else:
         print(f'Migrated {migrate_legacy(args.target)} records')

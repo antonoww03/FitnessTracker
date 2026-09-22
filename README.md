@@ -37,6 +37,7 @@ For a production build, run `npm run build` in `frontend`. Configure `REACT_APP_
 - `FITTRACK_AUTH_DISABLED=1` exists only for isolated tests/local development; never enable it on a shared or public deployment. Authentication is on by default.
 - The previous backend stored entries in Python lists. Already-lost data cannot be recovered from this repository. If a previous process is still running, export its available data before replacing it. No MongoDB migration is performed; the current backend did not use MongoDB.
 - USDA credentials are read only from the backend environment and are never printed or sent to the browser. If an earlier deployment logged a real key, rotate that key at the provider.
+- `/api` is a public database-readiness health check for the hosting platform; it returns no personal data. All personal routes remain authenticated.
 
 ## Functionality
 
@@ -129,11 +130,16 @@ The production build includes a manifest and service worker. Serve it over HTTPS
 
 Settings also supports per-device water, workout and weigh-in reminders. The
 permission request is always triggered by an explicit button, a test
-notification is available, and duplicate reminder slots are suppressed.
-In-page scheduling works while FitTrack is running. Reliable delivery after the
-app is closed additionally requires an installed Home Screen PWA and a deployed
-Web Push scheduler; the repository does not claim that local timers can wake a
-closed browser.
+notification is available, and duplicate reminder slots are suppressed. With
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` configured, saving
+the settings registers an authenticated per-user Web Push subscription. The
+server checks due reminders every 30 seconds in the saved IANA timezone and the
+service worker displays them after the PWA is closed. Expired subscriptions are
+removed and delivery slots are claimed transactionally to avoid duplicates.
+Without VAPID configuration the existing in-page reminders continue to work.
+On iPhone, background Web Push requires installing the HTTPS PWA on the Home
+Screen and allowing notifications. Run only one embedded push worker, or set
+`FITTRACK_PUSH_WORKER=0` on web replicas and run a single worker process.
 
 Apple Health is available only through the signed iOS wrapper contract in
 `ios/`. Safari and ordinary PWAs cannot call HealthKit directly. The bridge
@@ -142,6 +148,34 @@ FitTrack host, reads 30-day weight/workout/step/active-energy totals and writes
 newly logged FitTrack weight and workouts after explicit authorization. Xcode
 signing, HealthKit entitlement, usage descriptions and App Store privacy
 declarations are required; see `ios/README.md`.
+
+### Production launch checklist
+
+1. Deploy the included Docker image behind HTTPS and attach persistent writable
+   storage at `/app/backend/data`. Configure the host health check as `/api`.
+2. Keep authentication enabled, leave `FITTRACK_COOKIE_SECURE=1`, and set
+   `CORS_ORIGINS` only when the frontend is hosted on a separate origin.
+3. Set optional `USDA_API_KEY`. Generate a VAPID key pair and set the three
+   `VAPID_*` secrets to enable closed-app reminders; never expose the private key.
+4. Copy the automatic SQLite snapshots to independent private storage and test
+   restoring one before accepting real user data.
+5. Install the deployed PWA on an iPhone/Android device and verify login,
+   camera/gallery, barcode scanning, offline sync, notification delivery and
+   safe-area/keyboard layouts.
+6. For Apple Health, generate the checked-in Xcode project from `ios/project.yml`,
+   set the real HTTPS URL and bundle ID, select an Apple Developer signing team,
+   then test on a physical iPhone before App Store submission.
+
+Generate the Web Push key pair once, then copy the two printed values into the
+hosting provider's private environment settings and add a contact subject:
+
+```bash
+python -m backend.maintenance generate-vapid
+# also set VAPID_SUBJECT=mailto:your-address@example.com
+```
+
+Keep the same keys across deployments. Replacing them invalidates existing
+browser subscriptions and users must save their reminder settings again.
 
 Registration displays a recovery code once. Existing accounts can generate one in Settings after entering their password; generating another invalidates the old code. Forgotten-password recovery requires the username and this code, consumes it and revokes existing sessions. There is no email delivery integration. Save the code privately; generate a fresh one after use.
 

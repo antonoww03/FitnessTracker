@@ -1,5 +1,5 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v6";
+const CACHE = "fittrack-shell-v7";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -8,7 +8,7 @@ self.addEventListener("install", (event) =>
       if (!shell.ok) throw new Error("App shell unavailable");
       const html = await shell.clone().text();
       const assets = [
-        ...html.matchAll(/(?:src|href)=["'](\/static\/[^"']+)["']/g),
+        ...html.matchAll(/(?:src|href)=["'](\/(?:static|assets)\/[^"']+)["']/g),
       ].map((m) => m[1]);
       await cache.addAll([
         "/manifest.json",
@@ -58,6 +58,7 @@ self.addEventListener("fetch", (event) => {
   }
   if (
     !url.pathname.startsWith("/static/") &&
+    !url.pathname.startsWith("/assets/") &&
     !["/manifest.json", "/icon-192.png", "/icon-512.png"].includes(url.pathname)
   )
     return;

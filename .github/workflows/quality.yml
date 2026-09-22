@@ -11,7 +11,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       CI: 'true'
       FITTRACK_AUTO_BACKUP: '0'
@@ -36,6 +36,27 @@ jobs:
       - run: npm run test:reminders --prefix frontend
       - run: node frontend/tests/service-worker.cjs
       - run: npm run build --prefix frontend
+      - name: Build and smoke-test production image
+        run: |
+          docker build -t fittrack-ci .
+          docker run -d --name fittrack-ci -p 18000:8000 \
+            -e FITTRACK_COOKIE_SECURE=0 \
+            -e FITTRACK_AUTO_BACKUP=0 \
+            -e FITTRACK_DB_PATH=/tmp/fittrack.sqlite3 \
+            fittrack-ci
+          trap 'docker rm -f fittrack-ci' EXIT
+          python - <<'PY'
+          import time, urllib.request
+          for attempt in range(60):
+              try:
+                  assert urllib.request.urlopen('http://127.0.0.1:18000/api', timeout=2).status == 200
+                  assert urllib.request.urlopen('http://127.0.0.1:18000/', timeout=2).status == 200
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit('Production container did not become ready')
+          PY
       - name: Install browser for UI checks
         working-directory: frontend
         run: npx playwright install --with-deps chromium

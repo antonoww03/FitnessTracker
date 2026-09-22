@@ -102,3 +102,16 @@ restore and existing account deletion. Invalid image content and excessive image
 sizes are rejected. Loading failure blocks edits; processing/saving disables the
 form; unsaved edits use the app's navigation guard. Profile weight does not change
 daily weight history. Native camera picker behavior still requires phone testing.
+
+## Release preparation (2026-09-22)
+
+Migrated CRA/CRACO to Vite, updated Axios/React Router and backend security
+dependencies. Production output remains `frontend/build`; the service worker
+now caches Vite assets as well as legacy assets. Added Render Blueprint,
+persistent private VAPID key provisioning, HTTP browser protections, trusted
+public-origin configuration and container smoke testing in CI.
+
+Local backend regression: 73 passed. Frontend feature/offline/reminder/PWA
+suites and production build passed. npm audit reported zero vulnerabilities.
+Native Swift compilation and physical-device acceptance remain external gates.
+See DEPLOYMENT.md for hosting/account setup; no deployment has been created.

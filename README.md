@@ -4,7 +4,7 @@ Personal training, nutrition, water and weight dashboard with separate user acco
 
 ## Run locally
 
-Requires Python 3.10+ and Node.js 20+.
+Requires Python 3.10+ and Node.js 22.12+.
 
 ```bash
 python -m venv .venv
@@ -176,6 +176,11 @@ python -m backend.maintenance generate-vapid
 
 Keep the same keys across deployments. Replacing them invalidates existing
 browser subscriptions and users must save their reminder settings again.
+
+For the prepared one-service deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
+`render.yaml` provisions the HTTPS service, health check and persistent disk,
+and enables one-time VAPID key creation on that disk. Only the hosting-account
+approval remains; no private key needs to be copied through chat or committed.
 
 Registration displays a recovery code once. Existing accounts can generate one in Settings after entering their password; generating another invalidates the old code. Forgotten-password recovery requires the username and this code, consumes it and revokes existing sessions. There is no email delivery integration. Save the code privately; generate a fresh one after use.
 

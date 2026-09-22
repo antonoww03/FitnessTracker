@@ -28,7 +28,10 @@ def client(tmp_path, monkeypatch):
 
 
 def test_health_defaults_empty_day(client):
-    assert client.get('/api').json() == {'status': 'ok'}
+    health = client.get('/api')
+    assert health.json() == {'status': 'ok'}
+    assert health.headers['x-content-type-options'] == 'nosniff'
+    assert health.headers['x-frame-options'] == 'DENY'
     data = client.get('/api/summary', params={'date': DAY}).json()
     assert data['totals'] == dict.fromkeys(server.MACROS, 0)
     assert data['goals'] == server.DEFAULT_GOALS

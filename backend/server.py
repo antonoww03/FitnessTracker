@@ -1,20 +1,23 @@
 """Authenticated fitness API with durable, per-user SQLite storage."""
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date as Date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Annotated, Literal
 import base64
 import binascii
+import asyncio
 import csv
 import json
 import math
+import logging
 import os
 import re
 import sqlite3
 import uuid
 import hashlib
 import secrets
+import stat
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import urlparse
@@ -33,7 +36,55 @@ load_dotenv(ROOT_DIR / '.env')
 DB_PATH = Path(os.getenv('FITTRACK_DB_PATH', str(ROOT_DIR / 'data' / 'fittrack.sqlite3')))
 MACROS = ('calories', 'protein', 'fat', 'carbs', 'sugar', 'fiber')
 DEFAULT_GOALS = dict(zip(MACROS, (2000, 150, 65, 250, 50, 30)))
-app = FastAPI(title='FitTrack API')
+
+
+@asynccontextmanager
+async def lifespan(application):
+    """Own the backup and reminder workers for exactly one app process."""
+    application.state.backup_task = None
+    application.state.push_task = None
+    with database():
+        pass
+
+    async def backup_loop():
+        from backend.maintenance import backup_database
+        directory = Path(os.getenv('FITTRACK_BACKUP_DIR', str(DB_PATH.parent / 'backups')))
+        while True:
+            try:
+                name = datetime.now(timezone.utc).strftime('fittrack-%Y%m%d-%H%M%S-%f.sqlite3')
+                await asyncio.to_thread(backup_database, directory / name)
+                for old in sorted(directory.glob('fittrack-*.sqlite3'), reverse=True)[7:]:
+                    old.unlink()
+            except Exception:
+                logging.getLogger('fittrack').exception('Automatic backup failed')
+            await asyncio.sleep(86400)
+
+    async def push_loop():
+        while True:
+            try:
+                await asyncio.to_thread(send_due_push_notifications)
+            except Exception:
+                logging.getLogger('fittrack').exception('Push reminder delivery failed')
+            await asyncio.sleep(30)
+
+    if os.getenv('FITTRACK_AUTO_BACKUP', '1') == '1':
+        application.state.backup_task = asyncio.create_task(backup_loop())
+    if push_enabled() and os.getenv('FITTRACK_PUSH_WORKER', '1') == '1':
+        application.state.push_task = asyncio.create_task(push_loop())
+    try:
+        yield
+    finally:
+        for name in ('backup_task', 'push_task'):
+            task = getattr(application.state, name, None)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+
+app = FastAPI(title='FitTrack API', lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
@@ -43,6 +94,28 @@ app.add_middleware(
 api_router = APIRouter()
 CURRENT_USER = ContextVar("current_user", default="")
 OPERATION_ID = ContextVar("operation_id", default=None)
+
+
+@app.middleware('http')
+async def security_headers(request: Request, call_next):
+    """Apply browser protections without breaking the interactive API docs."""
+    response = await call_next(request)
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(self), geolocation=(), microphone=(), payment=()')
+    if request.url.path not in ('/docs', '/redoc', '/openapi.json') and not request.url.path.startswith('/api'):
+        response.headers.setdefault(
+            'Content-Security-Policy',
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+            "form-action 'self'; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; "
+            "connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'",
+        )
+    forwarded_scheme = request.headers.get('x-forwarded-proto', '').split(',', 1)[0].strip().lower()
+    if request.url.scheme == 'https' or forwarded_scheme == 'https':
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return response
 
 def scoped(kind):
     owner = CURRENT_USER.get()
@@ -543,7 +616,10 @@ async def authenticate(request: Request, call_next):
         if request.headers.get('x-requested-with') != 'FitTrack':
             return JSONResponse({'detail': 'Missing request protection header'}, status_code=403)
         origin = request.headers.get('origin')
-        allowed = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+        allowed = [value.strip() for value in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')]
+        public_origin = os.getenv('FITTRACK_PUBLIC_ORIGIN') or os.getenv('RENDER_EXTERNAL_URL')
+        if public_origin:
+            allowed.append(public_origin.rstrip('/'))
         if origin and origin != str(request.base_url).rstrip('/') and origin not in allowed:
             return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
     if path in ('/api', '/api/', '/api/auth/login', '/api/auth/register', '/api/auth/reset-password'):
@@ -751,13 +827,64 @@ class ReminderSettings(Model):
     weighIn: TimedReminder = Field(default_factory=TimedReminder)
 
 
+def _valid_vapid_configuration(value):
+    if not value or not value.get('public_key') or not value.get('private_key'):
+        return False
+    subject = value.get('subject', '')
+    return subject.startswith('mailto:') or subject.startswith('https://')
+
+
+def vapid_configuration():
+    """Load explicit VAPID secrets or create a persistent pair when opted in."""
+    configured = {
+        'public_key': os.getenv('VAPID_PUBLIC_KEY', ''),
+        'private_key': os.getenv('VAPID_PRIVATE_KEY', ''),
+        'subject': os.getenv('VAPID_SUBJECT', ''),
+    }
+    if _valid_vapid_configuration(configured):
+        return configured
+    if any(configured.values()) or os.getenv('FITTRACK_AUTO_VAPID', '0') != '1':
+        return None
+
+    subject = os.getenv('FITTRACK_VAPID_SUBJECT', 'https://github.com/antonoww03/FitnessTracker')
+    target = Path(os.getenv('FITTRACK_VAPID_KEY_FILE', str(DB_PATH.parent / 'vapid.json')))
+    try:
+        if target.is_file():
+            stored = json.loads(target.read_text(encoding='utf-8'))
+        else:
+            from backend.maintenance import generate_vapid_keys
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            keys = generate_vapid_keys()
+            stored = {'public_key': keys['VAPID_PUBLIC_KEY'], 'private_key': keys['VAPID_PRIVATE_KEY']}
+            temporary = target.with_name(f'.{target.name}.{uuid.uuid4().hex}.tmp')
+            descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+                    json.dump(stored, output)
+                    output.flush()
+                    os.fsync(output.fileno())
+                try:
+                    os.link(temporary, target)
+                except FileExistsError:
+                    stored = json.loads(target.read_text(encoding='utf-8'))
+                os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+        result = {**stored, 'subject': subject}
+        return result if _valid_vapid_configuration(result) else None
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+
+
 def push_enabled():
-    return bool(os.getenv('VAPID_PUBLIC_KEY') and os.getenv('VAPID_PRIVATE_KEY') and os.getenv('VAPID_SUBJECT'))
+    return vapid_configuration() is not None
 
 
 @api_router.get('/push/public-key')
 def push_public_key():
-    return {'enabled': push_enabled(), 'public_key': os.getenv('VAPID_PUBLIC_KEY', '') if push_enabled() else ''}
+    configuration = vapid_configuration()
+    return {'enabled': bool(configuration), 'public_key': configuration['public_key'] if configuration else ''}
 
 
 @api_router.put('/push/subscription')
@@ -825,7 +952,8 @@ def due_push_notifications(now=None):
 
 
 def send_due_push_notifications(now=None):
-    if not push_enabled():
+    configuration = vapid_configuration()
+    if not configuration:
         return 0
     from pywebpush import WebPushException, webpush
     sent = 0
@@ -834,8 +962,8 @@ def send_due_push_notifications(now=None):
             webpush(
                 subscription_info={'endpoint': subscription.endpoint, 'keys': subscription.keys.model_dump()},
                 data=json.dumps(payload),
-                vapid_private_key=os.environ['VAPID_PRIVATE_KEY'],
-                vapid_claims={'sub': os.environ['VAPID_SUBJECT']},
+                vapid_private_key=configuration['private_key'],
+                vapid_claims={'sub': configuration['subject']},
                 ttl=3600,
             )
             sent += 1
@@ -1038,50 +1166,3 @@ def goals_for_day(day):
 from backend.advanced import router as advanced_router, ADVANCED_MODELS
 app.include_router(api_router, prefix='/api')
 app.include_router(advanced_router, prefix='/api')
-
-# Daily consistent SQLite backups, including accounts, retained locally for seven days.
-# An operator should copy this private directory to independent storage.
-@app.on_event('startup')
-async def start_services():
-    import asyncio
-    import logging
-    app.state.backup_task = None
-    app.state.push_task = None
-    with database():
-        pass
-    async def backup_loop():
-        from backend.maintenance import backup_database
-        directory = Path(os.getenv('FITTRACK_BACKUP_DIR', str(DB_PATH.parent / 'backups')))
-        while True:
-            try:
-                name = datetime.now(timezone.utc).strftime('fittrack-%Y%m%d-%H%M%S-%f.sqlite3')
-                await asyncio.to_thread(backup_database, directory / name)
-                for old in sorted(directory.glob('fittrack-*.sqlite3'), reverse=True)[7:]:
-                    old.unlink()
-            except Exception:
-                logging.getLogger('fittrack').exception('Automatic backup failed')
-            await asyncio.sleep(86400)
-    async def push_loop():
-        while True:
-            try:
-                await asyncio.to_thread(send_due_push_notifications)
-            except Exception:
-                logging.getLogger('fittrack').exception('Push reminder delivery failed')
-            await asyncio.sleep(30)
-    if os.getenv('FITTRACK_AUTO_BACKUP', '1') == '1':
-        app.state.backup_task = asyncio.create_task(backup_loop())
-    if push_enabled() and os.getenv('FITTRACK_PUSH_WORKER', '1') == '1':
-        app.state.push_task = asyncio.create_task(push_loop())
-
-
-@app.on_event('shutdown')
-async def stop_services():
-    import asyncio
-    for name in ('backup_task', 'push_task'):
-        task = getattr(app.state, name, None)
-        if task:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass

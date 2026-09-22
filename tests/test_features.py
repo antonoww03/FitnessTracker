@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import stat
 import pytest
 from fastapi.testclient import TestClient
 from backend import server
@@ -118,6 +119,21 @@ def test_vapid_key_generation():
     decode=lambda value: base64.urlsafe_b64decode(value+'='*((4-len(value)%4)%4))
     assert len(decode(keys['VAPID_PRIVATE_KEY']))==32
     assert len(decode(keys['VAPID_PUBLIC_KEY']))==65
+
+
+def test_automatic_vapid_key_is_private_and_stable(tmp_path, monkeypatch):
+    target = tmp_path / 'private' / 'vapid.json'
+    for name in ('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv('FITTRACK_AUTO_VAPID', '1')
+    monkeypatch.setenv('FITTRACK_VAPID_KEY_FILE', str(target))
+    monkeypatch.setenv('FITTRACK_VAPID_SUBJECT', 'https://example.com/contact')
+    first = server.vapid_configuration()
+    second = server.vapid_configuration()
+    assert first == second
+    assert first['subject'] == 'https://example.com/contact'
+    assert target.is_file()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
 def test_login_rate_limit(clients):

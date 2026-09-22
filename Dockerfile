@@ -16,5 +16,5 @@ COPY --from=frontend-build /app/frontend/build ./frontend/build
 RUN useradd --uid 10001 --create-home fittrack && mkdir -p /app/backend/data && chown -R fittrack:fittrack /app/backend/data
 USER fittrack
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api', timeout=3)"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','8000')+'/api/', timeout=3)"]
 CMD ["python", "-m", "backend.serve"]

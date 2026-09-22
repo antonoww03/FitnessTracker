@@ -158,6 +158,26 @@ def test_legacy_preferences_upgrade(clients):
     assert a.get('/api/preferences').json()['hidden_sections']==[]
 
 
+def test_profile_is_private_validated_and_backed_up(clients):
+    a,b=clients
+    from PIL import Image
+    from io import BytesIO
+    import base64
+    image = BytesIO()
+    Image.new('RGB', (8, 8)).save(image, format='JPEG')
+    photo = 'data:image/jpeg;base64,' + base64.b64encode(image.getvalue()).decode()
+    profile={'first_name':'Ivan','last_name':'Antonov','age':23,'height_cm':181,'weight_kg':72,'gender':'male','photo_data_url':photo}
+    assert a.put('/api/profile',json=profile).json()==profile
+    assert a.get('/api/profile').json()==profile
+    assert b.get('/api/profile').json()['first_name']==''
+    assert a.put('/api/profile',json={**profile,'age':121}).status_code==422
+    assert a.put('/api/profile',json={**profile,'photo_data_url':'data:text/html;base64,YWJj'}).status_code==422
+    backup=a.get('/api/backup').json()
+    assert backup['records']['profile'][0]['first_name']=='Ivan'
+    assert b.post('/api/backup/restore',json=backup).status_code==200
+    assert b.get('/api/profile').json()['height_cm']==181
+
+
 def test_password_spaces_are_significant(clients):
     a,b=clients
     spaced='  a-unique-password-123  '

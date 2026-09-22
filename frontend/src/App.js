@@ -13,6 +13,7 @@ import { WaterTracker } from "./components/WaterTracker";
 import { WeightTracker } from "./components/WeightTracker";
 import { CoachTips } from "./components/CoachTips";
 import { Reports } from "./components/Reports";
+import { Profile } from "./components/Profile";
 
 import {
   Plus,
@@ -211,7 +212,9 @@ function AppContent({ user, onLogout, onSignedOut }) {
             <span className="ft-eyebrow">{t("Your personal dashboard")}</span>
             <h1>
               {t(
-                activeTab === "reports"
+                activeTab === "profile"
+                  ? "My Profile"
+                  : activeTab === "reports"
                   ? "Your reports"
                   : activeTab === "history"
                     ? "Your history"
@@ -261,6 +264,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
         <main>
           <div className="ft-tools">
             {[
+              "profile",
               "meals",
               "recipes",
               "progress",
@@ -280,7 +284,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
                   setActiveTab(key);
                 }}
               >
-                {t(key[0].toUpperCase() + key.slice(1))}
+                {t(key === "profile" ? "My Profile" : key[0].toUpperCase() + key.slice(1))}
               </button>
             ))}
           </div>
@@ -315,6 +319,10 @@ function AppContent({ user, onLogout, onSignedOut }) {
             <RecipesView selectedDate={selectedDate} onRefresh={fetchData} />
           ) : activeTab === "body" ? (
             <BodyMeasurements key={selectedDate} selectedDate={selectedDate} />
+          ) : activeTab === "profile" ? (
+            <div className="ft-content">
+              <Profile user={user} />
+            </div>
           ) : activeTab === "settings" ? (
             <div className="ft-content">
               <SettingsView
@@ -601,7 +609,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
           )}
         </main>
       </div>
-      {!entryType && activeTab !== "settings" && (
+      {!entryType && !["settings", "profile"].includes(activeTab) && (
         <button
           className="ft-floating-add"
           aria-label={t("Add entry")}

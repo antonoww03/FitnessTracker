@@ -158,3 +158,17 @@ The sync indicator shows pending local writes, errors, sync activity, and the ti
 `.github/workflows/quality.yml` runs backend tests, DOM feature tests, offline storage tests, PWA shell checks, the production build, and desktop/mobile browser suites on PRs and pushes to main/the audit branch. It uses a disposable local database, read-only repository permissions, no deployment and no application secrets. Mobile screenshots are retained for seven days as CI artifacts.
 
 `npm run test:mobile --prefix frontend` targets a local production server on port 8000 (`FITTRACK_E2E_URL` overrides it only for loopback). It checks 320/390/768 px layouts, a short viewport approximating an open keyboard, manifest availability, service-worker control, offline reload, queued water logging and exactly-once sync. Chromium emulation does not validate physical iPhone/Android installation, OS keyboard behavior or screen-locked vibration. Perform those checks on the deployed HTTPS app before treating phone support as fully verified.
+
+### My Profile
+
+Open **My Profile** to edit first/last name, age, height in cm, weight in kg,
+and gender. All fields are optional. Choose a gallery image or use the phone's
+camera picker; supported camera behavior depends on the browser/device.
+Images up to 10 MB are resized locally to a maximum of 512 px before saving.
+The authenticated profile API stores a private per-account profile and validates
+image content. Profile data/photos are included in backups and account deletion.
+Profile weight is a personal detail; daily measurements remain in the weight log.
+Saving profile changes requires connectivity.
+
+Profile browser regression: with a disposable local server running,
+`FITTRACK_E2E_URL=http://127.0.0.1:8000 node frontend/tests/profile.cjs`.

@@ -90,6 +90,16 @@ async function input(el, value) {
   await wait();
   await wait();
   assert(id("macros-dashboard"));
+  await click(id("tool-profile"));
+  assert(id("profile-page"));
+  await input(d.querySelector('[name="first_name"]'), "Alex");
+  await input(d.querySelector('[name="weight_kg"]'), "78.5");
+  await click(btn("Save profile"));
+  await click(id("tab-dashboard"));
+  await click(id("tool-profile"));
+  assert.equal(d.querySelector('[name="first_name"]').value, "Alex");
+  assert.equal(d.querySelector('[name="weight_kg"]').value, "78.5");
+  assert(d.querySelector('input[capture="user"]'));
   await click(btn("Meals"));
   const check = d.querySelector("input[type=checkbox]");
   await click(check);

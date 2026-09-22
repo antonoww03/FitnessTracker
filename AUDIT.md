@@ -85,3 +85,13 @@ bridge and minimal iOS WebView shell under `ios/`. It reads aggregate HealthKit
 data and, after explicit authorization, writes new FitTrack weight/workouts.
 Building and signing that native target with the HealthKit entitlement remains
 an Apple/Xcode deployment step, not something the web CI can certify.
+
+## My Profile
+
+Added a separate profile screen with first/last name, optional age/height/weight/
+gender, gallery/camera file pickers, local image resizing, preview and removal.
+Authenticated GET/PUT profile records are scoped per user and included in backup
+restore and existing account deletion. Invalid image content and excessive image
+sizes are rejected. Loading failure blocks edits; processing/saving disables the
+form; unsaved edits use the app's navigation guard. Profile weight does not change
+daily weight history. Native camera picker behavior still requires phone testing.

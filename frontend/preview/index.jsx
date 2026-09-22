@@ -17,6 +17,15 @@ let goals = {
 };
 let counter = 10;
 let preferences = { water_goal_ml: 3000, theme: "dark", language: "en" };
+let profile = {
+  first_name: "Demo",
+  last_name: "User",
+  age: 23,
+  height_cm: 180,
+  weight_kg: 75,
+  gender: "male",
+  photo_data_url: null,
+};
 const trash = {};
 const db = {
   food: [
@@ -350,6 +359,9 @@ axios.defaults.adapter = async (config) => {
   } else if (path === "/preferences") {
     if (method === "PUT") preferences = { ...body };
     data = { ...preferences };
+  } else if (path === "/profile") {
+    if (method === "PUT") profile = { ...body };
+    data = { ...profile };
   } else if (path === "/history") {
     data = ["food", "training", "water", "weight"]
       .flatMap((kind) => db[kind].map((r) => ({ ...r, kind })))

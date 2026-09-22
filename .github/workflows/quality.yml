@@ -56,6 +56,7 @@ jobs:
               raise SystemExit('Application did not start')
           PY
       - run: npm run test:e2e --prefix frontend
+      - run: node frontend/tests/profile.cjs
       - run: npm run test:mobile --prefix frontend
       - uses: actions/upload-artifact@v7
         if: always()

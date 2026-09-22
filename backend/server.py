@@ -4,6 +4,8 @@ from datetime import date as Date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Annotated, Literal
+import base64
+import binascii
 import csv
 import json
 import math
@@ -634,6 +636,54 @@ class Preferences(Model):
     theme: Literal['dark', 'light'] = 'dark'
 
 
+class Profile(Model):
+    first_name: str = Field(default='', max_length=80)
+    last_name: str = Field(default='', max_length=80)
+    age: int | None = Field(default=None, ge=13, le=120)
+    height_cm: float | None = Field(default=None, ge=50, le=280)
+    weight_kg: float | None = Field(default=None, ge=20, le=500)
+    gender: Literal['', 'male', 'female', 'other', 'prefer_not_to_say'] = ''
+    photo_data_url: str | None = Field(default=None, max_length=800_000)
+
+    @field_validator('photo_data_url')
+    @classmethod
+    def valid_photo(cls, value):
+        if value is None:
+            return value
+        match = re.fullmatch(r'data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})', value)
+        if not match:
+            raise ValueError('Photo must be a JPEG, PNG, or WebP image')
+        try:
+            decoded = base64.b64decode(match.group(2), validate=True)
+        except (ValueError, binascii.Error):
+            raise ValueError('Photo data is invalid') from None
+        if len(decoded) > 600_000:
+            raise ValueError('Photo must be smaller than 600 KB')
+        from PIL import Image, UnidentifiedImageError
+        try:
+            with Image.open(BytesIO(decoded)) as photo:
+                if photo.format != {'jpeg': 'JPEG', 'png': 'PNG', 'webp': 'WEBP'}[match.group(1)]:
+                    raise ValueError('Photo format does not match its content')
+                if max(photo.size) > 2048:
+                    raise ValueError('Photo dimensions are too large')
+                photo.verify()
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+            raise ValueError('Photo data is invalid') from None
+        return value
+
+
+@api_router.get('/profile')
+def get_profile():
+    rows = records('profile')
+    return Profile.model_validate({k: rows[0][k] for k in Profile.model_fields if k in rows[0]}).model_dump() if rows else Profile().model_dump()
+
+
+@api_router.put('/profile')
+def update_profile(body: Profile):
+    save('profile', body.model_dump(), 'profile')
+    return body
+
+
 @api_router.get('/preferences')
 def get_preferences():
     rows = records('preferences')
@@ -777,7 +827,7 @@ def progress(start: Date, end: Date):
 
 @api_router.get('/backup')
 def backup():
-    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, *ADVANCED_MODELS, 'goals', 'preferences', 'meal', 'report')}}
+    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, *ADVANCED_MODELS, 'goals', 'preferences', 'profile', 'meal', 'report')}}
     return Response(json.dumps(data), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="fittrack-backup.json"'})
 
 
@@ -792,7 +842,7 @@ async def restore(request: Request):
         body = json.loads(raw)
         assert body['version'] == 1 and isinstance(body['records'], dict)
         clean = []
-        allowed = {**MODELS, **ADVANCED_MODELS, 'goals': Goals, 'preferences': Preferences, 'meal': Meal}
+        allowed = {**MODELS, **ADVANCED_MODELS, 'goals': Goals, 'preferences': Preferences, 'profile': Profile, 'meal': Meal}
         for kind, rows in body['records'].items():
             assert kind in (*allowed, 'report') and isinstance(rows, list)
             for row in rows:
@@ -800,7 +850,7 @@ async def restore(request: Request):
                     value = {'date': str(Date.fromisoformat(row['date']))}
                 else:
                     value = allowed[kind].model_validate({k: v for k,v in row.items() if k not in ('id','timestamp')}).model_dump()
-                identifier = value['date'] if kind in ('weight', 'report', 'measurements', 'day_plan') else 'daily' if kind=='goals' else 'settings' if kind in ('preferences','day_goals') else str(row.get('id') or uuid.uuid4())
+                identifier = value['date'] if kind in ('weight', 'report', 'measurements', 'day_plan') else 'daily' if kind=='goals' else 'settings' if kind in ('preferences','day_goals') else 'profile' if kind == 'profile' else str(row.get('id') or uuid.uuid4())
                 assert len(identifier) <= 100
                 value.update(id=identifier, timestamp=datetime.now(timezone.utc).isoformat())
                 clean.append((scoped(kind), identifier, value.get('date',''), json.dumps(value)))

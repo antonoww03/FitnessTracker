@@ -61,10 +61,10 @@ with its persistent disk. Creating that service can incur hosting charges.
    until merged). In Vercel select **Root Directory: frontend**, **Framework
    Preset: Vite**, Node **22.x**, output **build**. Do not use the repository-root
    Services preset shown for the old Create React App version.
-3. Set `FITTRACK_API_ORIGIN` in Vercel to the actual backend HTTPS origin, e.g.
-   `https://your-service.onrender.com` (no `/api`). Remove
-   `REACT_APP_BACKEND_URL` if previously configured. `frontend/vercel.mjs`
-   proxies `/api` to the backend and handles browser route refreshes.
+3. `frontend/vercel.json` proxies `/api` to `https://fittrack-api-odyb.onrender.com`
+   and handles browser route refreshes. For another backend, update both API
+   rewrite destinations, preserving their `/api` paths. Remove
+   `REACT_APP_BACKEND_URL` if configured. `FITTRACK_API_ORIGIN` is no longer used.
 4. Set `FITTRACK_PUBLIC_ORIGIN` on the backend to your stable Vercel HTTPS
    domain, without a trailing slash. Keep `FITTRACK_COOKIE_SECURE=1` and
    restart the backend. This permits authenticated writes from that domain.
@@ -78,7 +78,7 @@ trusted additional frontend origins should be added to `CORS_ORIGINS` on the
 backend; do not allow all Vercel preview domains. Prefer a separate backend
 and database when testing preview deployments.
 
-Configuration reference: https://vercel.com/docs/project-configuration/vercel-ts
+Configuration reference: https://vercel.com/docs/project-configuration/vercel-json
 and https://vercel.com/docs/routing/rewrites.
 
 ## Release acceptance

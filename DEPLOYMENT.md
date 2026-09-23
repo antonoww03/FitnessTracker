@@ -45,6 +45,37 @@ Railway documents that non-root Docker users can need `RAILWAY_RUN_UID=0` for a
 mounted volume. Add it only if the deployment log reports permission denied for
 `/app/backend/data`; Render does not require this override.
 
+## Vercel frontend with a persistent backend
+
+This is a split deployment, not a migration of SQLite to Vercel. The backend
+and scheduled notifications still require the Render/Railway service above
+with its persistent disk. Creating that service can incur hosting charges.
+
+1. Deploy the backend using one of the options above and verify its `/api` URL.
+2. Import the branch containing these changes (`fix/full-functional-audit`
+   until merged). In Vercel select **Root Directory: frontend**, **Framework
+   Preset: Vite**, Node **22.x**, output **build**. Do not use the repository-root
+   Services preset shown for the old Create React App version.
+3. Set `FITTRACK_API_ORIGIN` in Vercel to the actual backend HTTPS origin, e.g.
+   `https://your-service.onrender.com` (no `/api`). Remove
+   `REACT_APP_BACKEND_URL` if previously configured. `frontend/vercel.mjs`
+   proxies `/api` to the backend and handles browser route refreshes.
+4. Set `FITTRACK_PUBLIC_ORIGIN` on the backend to your stable Vercel HTTPS
+   domain, without a trailing slash. Keep `FITTRACK_COOKIE_SECURE=1` and
+   restart the backend. This permits authenticated writes from that domain.
+5. Verify sign-up, sign-in, profile saving and logout through the Vercel URL.
+   Check that `/api/auth/me` returns JSON rather than the frontend HTML, then
+   test a notification. Repeat the release acceptance checks below.
+
+The browser uses one origin so HttpOnly session cookies remain usable without
+third-party cookies. Do not enable caching for API responses. Only explicitly
+trusted additional frontend origins should be added to `CORS_ORIGINS` on the
+backend; do not allow all Vercel preview domains. Prefer a separate backend
+and database when testing preview deployments.
+
+Configuration reference: https://vercel.com/docs/project-configuration/vercel-ts
+and https://vercel.com/docs/routing/rewrites.
+
 ## Release acceptance
 
 - Confirm account registration, sign-in and recovery code storage.

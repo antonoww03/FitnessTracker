@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React, { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -5,18 +6,24 @@ import { Scale, Check } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
+import { writeHealthWeight } from "@/lib/health";
 
-export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
+export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged, userId }) => {
   const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    const w = parseFloat(weight);
-    if (!w || w <= 0) return;
+    if (saving) return;
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w <= 0) { toast.error("Enter a positive weight."); return; }
     setSaving(true);
     try {
       await axios.post(`${API}/weight`, { weight_kg: w, date: selectedDate });
+      await writeHealthWeight(userId, {
+        date: selectedDate,
+        weight_kg: w,
+      }).catch(() => toast.info(t("Saved in FitTrack; Apple Health sync failed")));
       toast.success(`Weight logged: ${w} kg`);
       setWeight("");
       onWeightLogged();
@@ -29,10 +36,8 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
 
   return (
     <div className="ft-card p-5" data-testid="weight-tracker">
-      <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white mb-3">
-        <Scale className="inline h-4 w-4 text-[#A0A0A0] mr-1.5 -mt-0.5" />
-        Weight
-      </h2>
+      <h2 className="font-body text-lg tracking-normal font-bold text-white mb-3">
+        <Scale className="inline h-4 w-4 text-[#A0A0A0] mr-1.5 -mt-0.5" />{t("Weight")}</h2>
 
       {weightKg !== null && weightKg !== undefined && (
         <div className="mb-3 text-center" data-testid="current-weight-display">
@@ -57,6 +62,7 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged }) => {
           onClick={handleSave}
           disabled={saving || !weight}
           className="bg-[#007AFF] hover:bg-[#0062CC] text-white h-9 px-4 rounded-md"
+          aria-label={t("Save weight")}
           data-testid="save-weight-button"
         >
           <Check className="h-4 w-4" />

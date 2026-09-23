@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React, { useState } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API } from "@/lib/api";
 
 const TYPE_CONFIG = {
   calories: { icon: Flame, color: "#FF9F0A" },
@@ -48,25 +49,21 @@ export const CoachTips = ({ selectedDate }) => {
   return (
     <div className="ft-card p-5" data-testid="coach-tips">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-heading text-lg uppercase tracking-widest font-bold text-white">
-          <MessageCircle className="inline h-4 w-4 text-[#007AFF] mr-1.5 -mt-0.5" />
-          AI Coach
-        </h2>
+        <h2 className="font-body text-lg tracking-normal font-bold text-white">
+          <MessageCircle className="inline h-4 w-4 text-[#007AFF] mr-1.5 -mt-0.5" />{t("Daily Review")}</h2>
         <Button
           onClick={generateTips}
           disabled={loading}
-          className="bg-[#007AFF] hover:bg-[#0062CC] text-white font-heading uppercase tracking-wider text-xs font-semibold h-8 px-3 rounded-md"
+          className="bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-xs font-semibold h-8 px-3 rounded-md"
           data-testid="generate-tips-button"
         >
           {loading ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-              Analyzing...
-            </>
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />{t("Analyzing...")}</>
           ) : (
             <>
               <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              {hasGenerated ? "Refresh" : "Get Tips"}
+              {t(hasGenerated ? "Refresh" : "Get Tips")}
             </>
           )}
         </Button>
@@ -76,9 +73,7 @@ export const CoachTips = ({ selectedDate }) => {
         <p
           className="text-[#555] text-sm font-body text-center py-4"
           data-testid="coach-empty-state"
-        >
-          Log some food and water, then ask your AI coach for personalized tips.
-        </p>
+        >{t("Review your logged intake against your own targets. These are summaries, not AI-generated recommendations.")}</p>
       )}
 
       {tips.length > 0 && (

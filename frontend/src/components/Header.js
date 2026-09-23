@@ -1,3 +1,4 @@
+import {t} from "@/lib/i18n";
 import React from "react";
 import { format } from "date-fns";
 import { Calendar } from "../components/ui/calendar";
@@ -26,29 +27,30 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
   };
 
   return (
-    <header className="flex items-center justify-between mb-6 md:mb-8" data-testid="app-header">
+    <header className="ft-header" data-testid="app-header">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-md bg-[#007AFF] flex items-center justify-center">
           <Activity className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="font-heading text-2xl sm:text-3xl uppercase font-extrabold tracking-wider text-white leading-none">
+          <h1 className="ft-brand">
             EGT Digital Track
           </h1>
-          <p className="text-[11px] text-[#A0A0A0] font-body tracking-wide mt-0.5">
+          <p className="ft-brand-subtitle">
             {totalTrainingMinutes > 0
-              ? `${totalTrainingMinutes} min trained today`
+              ? `${totalTrainingMinutes} min trained ${isToday ? "today" : "on this date"}`
               : "Personal dashboard"}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="ft-date-controls">
         <Button
           variant="ghost"
           size="icon"
           onClick={goToPrev}
           className="h-8 w-8 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
+          aria-label="Previous day"
           data-testid="prev-day-button"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -82,9 +84,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
                   variant="ghost"
                   className="w-full text-xs text-[#007AFF] hover:bg-[#007AFF]/10 h-8 font-body"
                   data-testid="go-to-today-button"
-                >
-                  Go to Today
-                </Button>
+                >{t("Go to Today")}</Button>
               </div>
             )}
           </PopoverContent>
@@ -95,6 +95,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
           size="icon"
           onClick={goToNext}
           className="h-8 w-8 text-[#A0A0A0] hover:text-white hover:bg-[#2A2A2A]"
+          aria-label="Next day"
           data-testid="next-day-button"
         >
           <ChevronRight className="h-4 w-4" />

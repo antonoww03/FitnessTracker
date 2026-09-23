@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import "@/App.css";
 import axios from "axios";
 import { format } from "date-fns";
@@ -13,8 +13,21 @@ import { WaterTracker } from "./components/WaterTracker";
 import { WeightTracker } from "./components/WeightTracker";
 import { CoachTips } from "./components/CoachTips";
 import { Reports } from "./components/Reports";
+import { Profile } from "./components/Profile";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import {
+  Plus,
+  X,
+  LayoutDashboard,
+  History,
+  ChartNoAxesCombined,
+  Scale,
+  Dumbbell,
+  Utensils,
+  Droplets,
+} from "lucide-react";
+
+import { API } from "@/lib/api";
 
 const DEFAULT_GOALS = {
   calories: 2000,
@@ -34,8 +47,69 @@ const DEFAULT_TOTALS = {
   fiber: 0,
 };
 
-function App() {
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+import { hasDrafts } from "./lib/drafts";
+import { Account } from "./components/Account";
+import {
+  HistoryView,
+  MealsView,
+  ProgressView,
+  SettingsView,
+} from "./components/FeatureHub";
+import { setLanguage, t, storage } from "./lib/i18n";
+import { TrainingStudio, DayPlanCard } from "./components/TrainingStudio";
+import {
+  RecipesView,
+  BodyMeasurements,
+  DayGoalSettings,
+  OfflinePanel,
+  RecoverySettings,
+  OfflineBadge,
+} from "./components/WellnessTools";
+import {
+  QuickFoods,
+  TrainingCalendar,
+  AccountSecurity,
+} from "./components/DailyTools";
+import {
+  DeviceIntegrations,
+  useReminderEngine,
+} from "./components/DeviceIntegrations";
+function AppContent({ user, onLogout, onSignedOut }) {
+  useReminderEngine(user.id);
+  const [planRevision, setPlanRevision] = useState(0);
+  const [preferences, setPreferences] = useState({
+    water_goal_ml: 3000,
+    language: storage.get("fittrack-language") || "en",
+    theme: storage.get("fittrack-theme") || "dark",
+  });
+  const visible = (key) => !(preferences.hidden_sections || []).includes(key);
+  const dirty = useRef(false);
+  const leave = () =>
+    !(dirty.current || hasDrafts()) ||
+    window.confirm(t("Unsaved changes. Discard them?"));
+  const applyPreferences = (data) => {
+    setLanguage(data.language);
+    storage.set("fittrack-theme", data.theme);
+    document.documentElement.dataset.theme = data.theme;
+    setPreferences(data);
+  };
+  useEffect(() => {
+    axios
+      .get(`${API}/preferences`)
+      .then((r) => applyPreferences(r.data))
+      .catch(() => {});
+    const guard = (e) => {
+      if (dirty.current || hasDrafts()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, []);
+  const [selectedDate, setSelectedDate] = useState(
+    format(new Date(), "yyyy-MM-dd"),
+  );
   const [goals, setGoals] = useState(DEFAULT_GOALS);
   const [totals, setTotals] = useState(DEFAULT_TOTALS);
   const [foods, setFoods] = useState([]);
@@ -47,15 +121,31 @@ function App() {
   const [weightKg, setWeightKg] = useState(null);
   const [waterStreak, setWaterStreak] = useState(0);
 
+  const [entryType, setEntryType] = useState(null);
+  const currentDate = useRef(selectedDate);
+  currentDate.current = selectedDate;
+  const requestId = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [loadedDate, setLoadedDate] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+
   const fetchData = useCallback(async () => {
+    if (selectedDate !== currentDate.current) return;
+    const id = ++requestId.current;
+    setLoading(true);
+    setLoadError(false);
     try {
-      const [summaryRes, foodsRes, trainingsRes, waterRes, streakRes] = await Promise.all([
-        axios.get(`${API}/summary?date=${selectedDate}`),
-        axios.get(`${API}/food?date=${selectedDate}`),
-        axios.get(`${API}/training?date=${selectedDate}`),
-        axios.get(`${API}/water?date=${selectedDate}`),
-        axios.get(`${API}/streak/water`),
-      ]);
+      const [summaryRes, foodsRes, trainingsRes, streakRes] = await Promise.all(
+        [
+          axios.get(`${API}/summary?date=${selectedDate}`),
+          axios.get(`${API}/food?date=${selectedDate}`),
+          axios.get(`${API}/training?date=${selectedDate}`),
+          axios.get(`${API}/streak/water?date=${selectedDate}`),
+        ],
+      );
+      if (id !== requestId.current || selectedDate !== currentDate.current)
+        return;
+      setLoadedDate(selectedDate);
       setTotals(summaryRes.data.totals);
       setGoals(summaryRes.data.goals);
       setTotalTrainingMinutes(summaryRes.data.total_training_minutes);
@@ -65,7 +155,11 @@ function App() {
       setTrainings(trainingsRes.data);
       setWaterStreak(streakRes.data.streak || 0);
     } catch (err) {
-      console.error("Failed to fetch data:", err);
+      if (id === requestId.current && selectedDate === currentDate.current)
+        setLoadError(true);
+    } finally {
+      if (id === requestId.current && selectedDate === currentDate.current)
+        setLoading(false);
     }
   }, [selectedDate]);
 
@@ -73,114 +167,463 @@ function App() {
     fetchData();
   }, [fetchData]);
 
-  // Also fetch goals on mount
   useEffect(() => {
-    const fetchGoals = async () => {
-      try {
-        const res = await axios.get(`${API}/goals`);
-        setGoals(res.data);
-      } catch (err) {
-        console.error("Failed to fetch goals:", err);
-      }
+    const synced = () => {
+      fetchData();
+      setPlanRevision((v) => v + 1);
     };
-    fetchGoals();
-  }, []);
+    window.addEventListener("fittrack-synced", synced);
+    return () => window.removeEventListener("fittrack-synced", synced);
+  }, [fetchData]);
+  const openEntry = (type = "food") => {
+    if (!leave()) return;
+    dirty.current = false;
+    setEntryType(type);
+    setActiveTab("dashboard");
+  };
+  const afterSave = async () => {
+    dirty.current = false;
+    await fetchData();
+    if (currentDate.current === selectedDate) setEntryType(null);
+  };
+  const changeDate = (date) => {
+    if (!leave()) return;
+    dirty.current = false;
+    setSelectedDate(date);
+    setEntryType(null);
+  };
+  const waiting = loadedDate !== selectedDate && (loading || !loadError);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A]" data-testid="app-root">
-      <Toaster
-        theme="dark"
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: "#141414",
-            border: "1px solid #2A2A2A",
-            color: "#FFFFFF",
-            fontFamily: "'DM Sans', sans-serif",
-          },
-        }}
-      />
-
-      <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
+    <div
+      className="ft-app"
+      data-theme={preferences.theme}
+      data-testid="app-root"
+    >
+      <Toaster theme={preferences.theme} position="top-right" />
+      <div className="ft-shell">
         <Header
           selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
+          onDateChange={changeDate}
           totalTrainingMinutes={totalTrainingMinutes}
         />
-
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-[#141414] rounded-md p-1 w-fit border border-[#2A2A2A]" data-testid="main-tabs">
+        <div className="ft-page-heading">
+          <div>
+            <span className="ft-eyebrow">{t("Your personal dashboard")}</span>
+            <h1>
+              {t(
+                activeTab === "profile"
+                  ? "My Profile"
+                  : activeTab === "reports"
+                  ? "Your reports"
+                  : activeTab === "history"
+                    ? "Your history"
+                    : activeTab === "dashboard"
+                      ? "A little better, every day."
+                      : activeTab[0].toUpperCase() + activeTab.slice(1),
+              )}
+            </h1>
+          </div>
           <button
-            onClick={() => setActiveTab("dashboard")}
-            className={`px-4 py-1.5 rounded-md text-sm font-heading uppercase tracking-wider transition-all duration-200 ${activeTab === "dashboard" ? "bg-[#007AFF] text-white" : "text-[#A0A0A0] hover:text-white"}`}
-            data-testid="tab-dashboard"
+            className="ft-primary"
+            onClick={() => openEntry()}
+            data-testid="add-entry-button"
           >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab("reports")}
-            className={`px-4 py-1.5 rounded-md text-sm font-heading uppercase tracking-wider transition-all duration-200 ${activeTab === "reports" ? "bg-[#007AFF] text-white" : "text-[#A0A0A0] hover:text-white"}`}
-            data-testid="tab-reports"
-          >
-            Reports
+            <Plus size={18} />
+            {t("Add entry")}
           </button>
         </div>
-
-        {activeTab === "dashboard" ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-          {/* Macros Dashboard */}
-          <div className="md:col-span-2 lg:col-span-2 animate-slide-up stagger-1">
-            <MacrosDashboard
-              totals={totals}
-              goals={goals}
-              onOpenGoals={() => setGoalsOpen(true)}
-            />
+        <nav
+          className="ft-nav"
+          aria-label="Main navigation"
+          data-testid="main-tabs"
+        >
+          {[
+            ["dashboard", "Today", LayoutDashboard],
+            ["history", "History", History],
+            ["training", "Training", ChartNoAxesCombined],
+          ].map(([key, label, Icon]) => (
+            <button
+              key={key}
+              aria-current={activeTab === key ? "page" : undefined}
+              onClick={() => {
+                if (!leave()) return;
+                dirty.current = false;
+                setActiveTab(key);
+                setEntryType(null);
+                if (key === "dashboard")
+                  setSelectedDate(format(new Date(), "yyyy-MM-dd"));
+              }}
+              data-testid={`tab-${key}`}
+            >
+              <Icon size={18} />
+              <span>{t(label)}</span>
+            </button>
+          ))}
+        </nav>
+        <main>
+          <div className="ft-tools">
+            {[
+              "profile",
+              "meals",
+              "recipes",
+              "progress",
+              "body",
+              "reports",
+              "calendar",
+              "settings",
+            ].map((key) => (
+              <button
+                key={key}
+                data-testid={key === "reports" ? "tab-reports" : `tool-${key}`}
+                className={activeTab === key ? "ft-primary" : "ft-secondary"}
+                onClick={() => {
+                  if (!leave()) return;
+                  dirty.current = false;
+                  setEntryType(null);
+                  setActiveTab(key);
+                }}
+              >
+                {t(key === "profile" ? "My Profile" : key[0].toUpperCase() + key.slice(1))}
+              </button>
+            ))}
           </div>
-
-          {/* Water Tracker */}
-          <div className="md:col-span-1 lg:col-span-1 animate-slide-up stagger-2">
-            <WaterTracker
+          <OfflineBadge
+            onOpen={() => {
+              if (leave()) {
+                dirty.current = false;
+                setEntryType(null);
+                setActiveTab("settings");
+              }
+            }}
+          />
+          {activeTab === "training" ? (
+            <TrainingStudio
+              user={user}
               selectedDate={selectedDate}
-              totalWaterMl={totalWaterMl}
-              onWaterLogged={fetchData}
-              streak={waterStreak}
+              onRefresh={fetchData}
+              onPlanChange={() => {
+                setPlanRevision((v) => v + 1);
+                fetchData();
+              }}
             />
-          </div>
-
-          {/* Forms: Food + Training + Weight */}
-          <div className="md:col-span-3 lg:col-span-1 space-y-4 md:space-y-6">
-            <div className="animate-slide-up stagger-3">
-              <FoodEntry selectedDate={selectedDate} onFoodLogged={fetchData} />
-            </div>
-            <div className="animate-slide-up stagger-4">
-              <TrainingLog selectedDate={selectedDate} onTrainingLogged={fetchData} />
-            </div>
-            <div className="animate-slide-up stagger-5">
-              <WeightTracker selectedDate={selectedDate} weightKg={weightKg} onWeightLogged={fetchData} />
-            </div>
-          </div>
-
-          {/* AI Coach */}
-          <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-5">
-            <CoachTips selectedDate={selectedDate} />
-          </div>
-
-          {/* Activity Feed */}
-          <div className="md:col-span-3 lg:col-span-4 animate-slide-up stagger-6">
-            <ActivityFeed
-                foods={foods}
-                trainings={trainings}
-                onRefresh={fetchData}
-                selectedDate={selectedDate}
+          ) : activeTab === "calendar" ? (
+            <TrainingCalendar
+              selectedDate={selectedDate}
+              onSelect={changeDate}
+              onOpenTraining={() => {
+                if (leave()) setActiveTab("training");
+              }}
             />
-          </div>
-        </div>
-        ) : (
-          <Reports selectedDate={selectedDate} />
-        )}
+          ) : activeTab === "recipes" ? (
+            <RecipesView selectedDate={selectedDate} onRefresh={fetchData} />
+          ) : activeTab === "body" ? (
+            <BodyMeasurements key={selectedDate} selectedDate={selectedDate} />
+          ) : activeTab === "profile" ? (
+            <div className="ft-content">
+              <Profile user={user} />
+            </div>
+          ) : activeTab === "settings" ? (
+            <div className="ft-content">
+              <SettingsView
+                preferences={preferences}
+                onSave={(data) => {
+                  applyPreferences(data);
+                  fetchData();
+                }}
+                user={user}
+                onLogout={() => {
+                  if (leave()) onLogout();
+                }}
+              />
+              <DayGoalSettings onSaved={fetchData} />
+              <OfflinePanel selectedDate={selectedDate} />
+              <DeviceIntegrations user={user} />
+              <RecoverySettings />
+              <AccountSecurity user={user} onSignedOut={onSignedOut} />
+            </div>
+          ) : activeTab === "progress" ? (
+            <ProgressView selectedDate={selectedDate} />
+          ) : activeTab === "meals" ? (
+            waiting ? (
+              <p role="status">{t("Loading…")}</p>
+            ) : loadError ? (
+              <p role="alert">
+                {t("Could not load this day.")}
+                <button onClick={fetchData}>{t("Retry")}</button>
+              </p>
+            ) : (
+              <>
+                <QuickFoods selectedDate={selectedDate} onRefresh={fetchData} />
+                <MealsView
+                  key={selectedDate}
+                  selectedDate={selectedDate}
+                  foods={foods}
+                  onRefresh={fetchData}
+                />
+              </>
+            )
+          ) : activeTab === "reports" ? (
+            <Reports selectedDate={selectedDate} />
+          ) : waiting ? (
+            <p role="status" className="ft-status">
+              {t("Loading")}
+              {selectedDate}…
+            </p>
+          ) : loadError ? (
+            <div role="alert" className="ft-status">
+              {t("Could not load this day.")}
+              <button onClick={fetchData}>{t("Retry")}</button>
+            </div>
+          ) : (
+            <div key={selectedDate} className="ft-content">
+              {entryType && (
+                <section
+                  className="ft-entry-panel"
+                  aria-label={t("Add entry")}
+                  data-testid="entry-panel"
+                  onChangeCapture={() => {
+                    dirty.current = true;
+                  }}
+                >
+                  <div className="ft-section-head">
+                    <div>
+                      <span className="ft-eyebrow">{selectedDate}</span>
+                      <h2>{t("Add an entry")}</h2>
+                    </div>
+                    <button
+                      className="ft-icon-button"
+                      aria-label={t("Close entry form")}
+                      onClick={() => {
+                        if (leave()) {
+                          dirty.current = false;
+                          setEntryType(null);
+                        }
+                      }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="ft-entry-types" aria-label="Entry type">
+                    {[
+                      ["food", "Food", Utensils],
+                      ["training", "Training", Dumbbell],
+                      ["water", "Water", Droplets],
+                      ["weight", "Weight", Scale],
+                    ].map(([key, label, Icon]) => (
+                      <button
+                        key={key}
+                        aria-pressed={entryType === key}
+                        onClick={() => {
+                          if (leave()) {
+                            dirty.current = false;
+                            setEntryType(key);
+                          }
+                        }}
+                        data-testid={`entry-type-${key}`}
+                      >
+                        <Icon size={17} />
+                        {t(label)}
+                      </button>
+                    ))}
+                  </div>
+                  {entryType === "food" && (
+                    <FoodEntry
+                      selectedDate={selectedDate}
+                      onFoodLogged={afterSave}
+                    />
+                  )}
+                  {entryType === "training" && (
+                    <TrainingLog
+                      selectedDate={selectedDate}
+                      onTrainingLogged={afterSave}
+                      userId={user.id}
+                    />
+                  )}
+                  {entryType === "water" && (
+                    <WaterTracker
+                      goalMl={preferences.water_goal_ml}
+                      selectedDate={selectedDate}
+                      totalWaterMl={totalWaterMl}
+                      onWaterLogged={fetchData}
+                      streak={waterStreak}
+                      expanded
+                    />
+                  )}
+                  {entryType === "weight" && (
+                    <WeightTracker
+                      selectedDate={selectedDate}
+                      weightKg={weightKg}
+                      onWeightLogged={afterSave}
+                      userId={user.id}
+                    />
+                  )}
+                </section>
+              )}
+              {activeTab === "dashboard" && (
+                <>
+                  <DayPlanCard
+                    key={selectedDate + planRevision}
+                    selectedDate={selectedDate}
+                    onChange={fetchData}
+                    onOpenTraining={() => {
+                      if (leave()) setActiveTab("training");
+                    }}
+                  />
+                  <MacrosDashboard
+                    totals={totals}
+                    goals={goals}
+                    onOpenGoals={() => setGoalsOpen(true)}
+                  />
+                  <div className="ft-essentials">
+                    {visible("water") && (
+                      <WaterTracker
+                        goalMl={preferences.water_goal_ml}
+                        selectedDate={selectedDate}
+                        totalWaterMl={totalWaterMl}
+                        onWaterLogged={fetchData}
+                        streak={waterStreak}
+                        onExpand={() => openEntry("water")}
+                      />
+                    )}
+                    {visible("weight") && (
+                      <section
+                        className="ft-card ft-small-card"
+                        data-testid="weight-summary"
+                      >
+                        <div className="ft-section-head">
+                          <h2>
+                            <Scale size={18} />
+                            {t("Weight")}
+                          </h2>
+                          <button
+                            className="ft-icon-button"
+                            aria-label={t("Log weight")}
+                            onClick={() => openEntry("weight")}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                        <div
+                          className="ft-stat-number"
+                          data-testid="weight-summary-value"
+                        >
+                          {weightKg ?? "—"}
+                          <span> kg</span>
+                        </div>
+                        <p className="ft-muted">
+                          {t(
+                            weightKg == null
+                              ? "No measurement for this date"
+                              : "Measurement for this date",
+                          )}
+                        </p>
+                        <button
+                          className="ft-text-button"
+                          onClick={() => openEntry("weight")}
+                        >
+                          {t(
+                            weightKg == null
+                              ? "Log weight"
+                              : "Update measurement",
+                          )}
+                        </button>
+                      </section>
+                    )}
+                    {visible("training") && (
+                      <section className="ft-card ft-small-card">
+                        <div className="ft-section-head">
+                          <h2>
+                            <Dumbbell size={18} />
+                            {t("Training")}
+                          </h2>
+                          <button
+                            className="ft-icon-button"
+                            aria-label={t("Log training")}
+                            onClick={() => openEntry("training")}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                        <div className="ft-stat-number">
+                          {totalTrainingMinutes}
+                          <span> min</span>
+                        </div>
+                        <p className="ft-muted">
+                          {trainings.length}{" "}
+                          {t(trainings.length === 1 ? "session" : "sessions")}{" "}
+                          {t("logged")}
+                        </p>
+                        <button
+                          className="ft-text-button"
+                          onClick={() => openEntry("training")}
+                        >
+                          {t("Add a workout")}
+                        </button>
+                      </section>
+                    )}
+                  </div>
+                </>
+              )}
+              {activeTab === "history" ? (
+                <HistoryView
+                  selectedDate={selectedDate}
+                  onRefresh={fetchData}
+                />
+              ) : (
+                visible("activity") && (
+                  <ActivityFeed
+                    foods={foods}
+                    trainings={trainings}
+                    onRefresh={fetchData}
+                    selectedDate={selectedDate}
+                  />
+                )
+              )}
+              {activeTab === "dashboard" && visible("review") && (
+                <details className="ft-review">
+                  <summary>
+                    {t("Daily review")}
+                    <span>{t("Compare your intake with your targets")}</span>
+                  </summary>
+                  <CoachTips
+                    key={JSON.stringify([
+                      selectedDate,
+                      totals,
+                      goals,
+                      totalWaterMl,
+                      totalTrainingMinutes,
+                    ])}
+                    selectedDate={selectedDate}
+                  />
+                </details>
+              )}
+              {activeTab === "history" && (
+                <p className="ft-muted">
+                  {t(
+                    "Use the date picker or arrows above to browse your daily entries.",
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+        </main>
       </div>
-
+      {!entryType && !["settings", "profile"].includes(activeTab) && (
+        <button
+          className="ft-floating-add"
+          aria-label={t("Add entry")}
+          data-testid="quick-add"
+          onClick={() => {
+            openEntry();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
+          <Plus size={22} />
+        </button>
+      )}
       <DailyGoals
+        selectedDate={selectedDate}
         open={goalsOpen}
         onOpenChange={setGoalsOpen}
         goals={goals}
@@ -192,5 +635,18 @@ function App() {
     </div>
   );
 }
-
+function App() {
+  return (
+    <Account>
+      {(user, onLogout, onSignedOut) => (
+        <AppContent
+          key={user.id}
+          user={user}
+          onLogout={onLogout}
+          onSignedOut={onSignedOut}
+        />
+      )}
+    </Account>
+  );
+}
 export default App;

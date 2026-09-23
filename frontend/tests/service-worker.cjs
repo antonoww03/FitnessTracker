@@ -9,6 +9,23 @@ let promise;handlers.install({waitUntil:p=>{promise=p}});await promise;
 assert(assets.includes('/static/js/main.hash.js'));assert(assets.includes('/static/css/main.hash.css'));assert(stored.has('/'));assert(assets.includes('/assets/index-hash.js'));
 handlers.activate({waitUntil:p=>{promise=p}});await promise;assert(claimed);
 let intercepted=false;handlers.fetch({request:{url:'https://test.invalid/api/summary',method:'GET'},respondWith:()=>{intercepted=true}});assert(!intercepted);
+// A fetch response must not finish before its cache write: the worker can
+// otherwise be terminated and the next offline reload lose that asset.
+for (const request of [
+  {url:'https://test.invalid/assets/late.js',method:'GET'},
+  {url:'https://test.invalid/',method:'GET',mode:'navigate'},
+]) {
+  const originalPut=cache.put;
+  let release, finished=false;
+  cache.put=()=>new Promise(resolve=>{release=resolve});
+  handlers.fetch({request,respondWith:p=>{promise=p}});
+  promise.then(()=>{finished=true});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(typeof release,'function');
+  assert.equal(finished,false,'Response must keep the cache write alive');
+  release(); await promise;
+  cache.put=originalPut;
+}
 offline=true;handlers.fetch({request:{url:'https://test.invalid/',method:'GET',mode:'navigate'},respondWith:p=>{promise=p}});assert.equal(await promise,response);
 handlers.notificationclick({notification:{data:{url:'/'},close:()=>{closed=true}},waitUntil:p=>{promise=p}});await promise;assert(closed&&focused);
 handlers.push({data:{json:()=>({title:'Water',body:'Drink',tag:'water',url:'/'})},waitUntil:p=>{promise=p}});await promise;assert.equal(shown.title,'Water');assert.equal(shown.options.body,'Drink');

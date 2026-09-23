@@ -16,6 +16,8 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   });
   const page = await context.newPage();
   const errors = [];
+  const failedRequests = [];
+  page.on("requestfailed", (request) => failedRequests.push({ url: request.url(), error: request.failure()?.errorText }));
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (d) => d.accept());
   page.setDefaultTimeout(15000);
@@ -160,6 +162,8 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
       }),
     );
     console.log("Mobile page state", await page.locator("body").innerText());
+    console.log("Runtime errors", errors);
+    console.log("Failed requests", failedRequests);
     throw error;
   } finally {
     await browser.close();

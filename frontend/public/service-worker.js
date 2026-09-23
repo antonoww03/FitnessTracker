@@ -1,5 +1,5 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v7";
+const CACHE = "fittrack-shell-v8";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -45,10 +45,11 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
-        .then((r) => {
+        .then(async (r) => {
           if (r.ok) {
             const clone = r.clone();
-            caches.open(CACHE).then((c) => c.put("/", clone));
+            const cache = await caches.open(CACHE);
+            await cache.put("/", clone);
           }
           return r;
         })
@@ -66,10 +67,11 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then(
       (hit) =>
         hit ||
-        fetch(event.request).then((r) => {
+        fetch(event.request).then(async (r) => {
           if (r.ok) {
             const clone = r.clone();
-            caches.open(CACHE).then((c) => c.put(event.request, clone));
+            const cache = await caches.open(CACHE);
+            await cache.put(event.request, clone);
           }
           return r;
         }),

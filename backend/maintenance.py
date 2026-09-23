@@ -9,6 +9,8 @@ from backend.server import database
 
 
 def backup_database(destination):
+    if server.storage.postgres_enabled():
+        raise ValueError("PostgreSQL backups require pg_dump; use the in-app JSON export for personal data.")
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(destination, os.O_CREAT | os.O_WRONLY, 0o600)

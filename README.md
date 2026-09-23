@@ -1,3 +1,5 @@
+> Free hosting: see [FREE_HOSTING.md](FREE_HOSTING.md) for Vercel + Render + Supabase.
+
 # FitTrack / EGT Track
 
 Personal training, nutrition, water and weight dashboard with separate user accounts. React frontend, FastAPI backend, SQLite persistence.

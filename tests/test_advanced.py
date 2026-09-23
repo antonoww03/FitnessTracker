@@ -160,7 +160,7 @@ def test_legacy_preferences_upgrade(clients):
     owner=a.get('/api/auth/me').json()['id']
     import json
     with server.database() as db:
-        db.execute('INSERT INTO records VALUES (?,?,?,?)',(owner+':preferences','settings','',json.dumps({'water_goal_ml':3200,'language':'bg','theme':'light'})))
+        db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)',(owner+':preferences','settings','',json.dumps({'water_goal_ml':3200,'language':'bg','theme':'light'})))
     assert a.get('/api/preferences').json()['hidden_sections']==[]
 
 

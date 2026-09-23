@@ -98,6 +98,10 @@ def test_backup_restore_atomic_validated_scoped(clients,tmp_path):
     assert b.post('/api/backup/restore',json=backup).status_code==200
     assert b.post('/api/backup/restore',json=backup).status_code==200
     assert len(b.get('/api/food?date='+DAY).json())==1
+    if server.storage.postgres_enabled():
+        with pytest.raises(ValueError, match='pg_dump'):
+            backup_database(tmp_path/'backup.db')
+        return
     destination=backup_database(tmp_path/'backup.db')
     with sqlite3.connect(destination) as db:
         assert db.execute('SELECT count(*) FROM users').fetchone()[0]==2
@@ -132,6 +136,9 @@ def test_automatic_vapid_key_is_private_and_stable(tmp_path, monkeypatch):
     second = server.vapid_configuration()
     assert first == second
     assert first['subject'] == 'https://example.com/contact'
+    if server.storage.postgres_enabled():
+        assert not target.exists()
+        return
     assert target.is_file()
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
@@ -149,6 +156,10 @@ def test_restore_rejects_non_object_entries(clients):
 
 def test_automatic_backup_startup(tmp_path,monkeypatch):
     import time
+    if server.storage.postgres_enabled():
+        with TestClient(server.app):
+            assert server.app.state.backup_task is None
+        return
     monkeypatch.setattr(server,'DB_PATH',tmp_path/'source.db')
     monkeypatch.setenv('FITTRACK_AUTO_BACKUP','1')
     monkeypatch.setenv('FITTRACK_BACKUP_DIR',str(tmp_path/'snapshots'))

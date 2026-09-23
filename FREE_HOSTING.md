@@ -58,10 +58,12 @@ Import `antonoww03/FitnessTracker` from **main**:
 | Install Command | `npm ci` |
 | Build Command | `npm run build` |
 | Output Directory | `build` |
-| Environment variable | `FITTRACK_API_ORIGIN` = actual Render HTTPS origin |
+| API proxy | `frontend/vercel.json` points to `https://fittrack-api-odyb.onrender.com` |
 
-The Render origin must not include `/api`, a query string or credentials.
-Remove `REACT_APP_BACKEND_URL` if present. The checked-in `frontend/vercel.mjs`
+If using a different Render service, update both API rewrite destinations in
+`frontend/vercel.json`, preserving their `/api` paths. `FITTRACK_API_ORIGIN` is
+no longer used and can be removed from Vercel. This public service URL contains
+no database credentials. Remove `REACT_APP_BACKEND_URL` if present. The checked-in config
 proxies API requests on the Vercel origin, preserving secure session cookies.
 Deploy and copy the stable production Vercel address.
 

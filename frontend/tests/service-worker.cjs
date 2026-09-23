@@ -3,7 +3,7 @@ const handlers={},stored=new Map();let assets=[],offline=false,claimed=false,foc
 const response={ok:true,clone(){return this},text:async()=>'<script src="/static/js/main.hash.js"></script><link href="/static/css/main.hash.css"><script src="/assets/index-hash.js"></script>'};
 const cache={addAll:async values=>{assets=values},put:async(k,v)=>stored.set(k,v)};
 const self={location:{origin:'https://test.invalid'},registration:{showNotification:async(title,options)=>{shown={title,options}}},clients:{claim:async()=>{claimed=true}},addEventListener:(name,fn)=>{handlers[name]=fn}};
-vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/service-worker.js'),'utf8'),{URL,clients:{matchAll:async()=>[{navigate:async()=>{},focus:async()=>{focused=true}}],openWindow:async()=>{}},self,caches:{open:async()=>cache,keys:async()=>[],match:async k=>stored.get(k)},fetch:async()=>{if(offline)throw new Error('offline');return response}});
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/service-worker.js'),'utf8'),{URL,clients:{matchAll:async()=>[{navigate:async()=>{},focus:async()=>{focused=true}}],openWindow:async()=>{}},self,caches:{open:async()=>cache,keys:async()=>[],match:async (k,options)=>{if(k?.url?.includes("/assets/") && stored.has(k.url)) return options?.ignoreVary ? stored.get(k.url) : undefined; return stored.get(k)}},fetch:async()=>{if(offline)throw new Error('offline');return response}});
 (async()=>{
 let promise;handlers.install({waitUntil:p=>{promise=p}});await promise;
 assert(assets.includes('/static/js/main.hash.js'));assert(assets.includes('/static/css/main.hash.css'));assert(stored.has('/'));assert(assets.includes('/assets/index-hash.js'));
@@ -27,6 +27,11 @@ for (const request of [
   cache.put=originalPut;
 }
 offline=true;handlers.fetch({request:{url:'https://test.invalid/',method:'GET',mode:'navigate'},respondWith:p=>{promise=p}});assert.equal(await promise,response);
+// Model a precached public file with Vary: Origin: a module request carries
+// an Origin header unlike the install-time request. It must work offline.
+stored.set('https://test.invalid/assets/index-hash.js',response);
+handlers.fetch({request:{url:'https://test.invalid/assets/index-hash.js',method:'GET',mode:'cors',headers:{Origin:'https://test.invalid'}},respondWith:p=>{promise=p}});
+assert.equal(await promise,response,'Vary: Origin must not break offline static assets');
 handlers.notificationclick({notification:{data:{url:'/'},close:()=>{closed=true}},waitUntil:p=>{promise=p}});await promise;assert(closed&&focused);
 handlers.push({data:{json:()=>({title:'Water',body:'Drink',tag:'water',url:'/'})},waitUntil:p=>{promise=p}});await promise;assert.equal(shown.title,'Water');assert.equal(shown.options.body,'Drink');
 console.log('PASS: PWA asset precache, activation, API bypass, offline navigation, push delivery and notification click.');

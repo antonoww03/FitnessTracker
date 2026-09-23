@@ -1,5 +1,5 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v8";
+const CACHE = "fittrack-shell-v9";
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -64,7 +64,11 @@ self.addEventListener("fetch", (event) => {
   )
     return;
   event.respondWith(
-    caches.match(event.request).then(
+    // Public same-origin assets have identical bytes for every Origin header.
+    // CORS middleware can add Vary: Origin even to these static responses;
+    // module requests then miss assets precached without an Origin header.
+    // This applies only after the API and cross-origin exclusions above.
+    caches.match(event.request, { ignoreVary: true }).then(
       (hit) =>
         hit ||
         fetch(event.request).then(async (r) => {

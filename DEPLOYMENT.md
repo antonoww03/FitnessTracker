@@ -1,6 +1,11 @@
 # Production deployment
 
-The repository includes a production Docker image and a Render Blueprint. The
+For the free Vercel + Render + Supabase setup, follow [FREE_HOSTING.md](FREE_HOSTING.md).
+The default `render.yaml` now selects the Free plan with external PostgreSQL.
+The paid SQLite Blueprint is retained as `render.sqlite.yaml`.
+
+
+The repository includes a production Docker image and a paid SQLite Blueprint. That
 Blueprint runs one instance in Frankfurt, attaches a 1 GB persistent disk,
 checks `/api`, stores SQLite and backups on the disk, and creates a private
 VAPID key pair there on first startup. The browser private key is never returned
@@ -11,7 +16,7 @@ by the API or committed to Git.
 1. Merge the reviewed pull request into `main`.
 2. Open [Render's Blueprint creation page](https://dashboard.render.com/blueprints)
    and connect `antonoww03/FitnessTracker`.
-3. Select `render.yaml`, review the paid `0.5c-512mb` web service and 1 GB disk,
+3. Select `render.sqlite.yaml`, review the paid `0.5c-512mb` web service and 1 GB disk,
    then approve creation. Persistent disks are not available on Render's free
    web plan, so the free plan is suitable only for a disposable preview.
 4. Wait for `/api` to pass and open the assigned `onrender.com` HTTPS address.

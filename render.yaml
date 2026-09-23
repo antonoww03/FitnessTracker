@@ -1,30 +1,22 @@
+# Free backend. DATABASE_URL must point to a separate Supabase PostgreSQL project.
 services:
   - type: web
-    name: fittrack
+    name: fittrack-api
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     numInstances: 1
     healthCheckPath: /api
-    maxShutdownDelaySeconds: 30
     envVars:
-      - key: FITTRACK_DB_PATH
-        value: /app/backend/data/fittrack.sqlite3
-      - key: FITTRACK_BACKUP_DIR
-        value: /app/backend/data/backups
+      - key: DATABASE_URL
+        sync: false
+      - key: FITTRACK_REQUIRE_POSTGRES
+        value: "1"
       - key: FITTRACK_COOKIE_SECURE
         value: "1"
       - key: FITTRACK_AUTO_BACKUP
-        value: "1"
+        value: "0"
       - key: FITTRACK_AUTO_VAPID
         value: "1"
-      - key: FITTRACK_VAPID_KEY_FILE
-        value: /app/backend/data/vapid.json
-      - key: FITTRACK_VAPID_SUBJECT
-        value: https://github.com/antonoww03/FitnessTracker
       - key: FITTRACK_PUSH_WORKER
         value: "1"
-    disk:
-      name: fittrack-data
-      mountPath: /app/backend/data
-      sizeGB: 1

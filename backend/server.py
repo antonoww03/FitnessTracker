@@ -13,7 +13,7 @@ import math
 import logging
 import os
 import re
-import sqlite3
+from backend import storage
 import uuid
 import hashlib
 import secrets
@@ -67,7 +67,7 @@ async def lifespan(application):
                 logging.getLogger('fittrack').exception('Push reminder delivery failed')
             await asyncio.sleep(30)
 
-    if os.getenv('FITTRACK_AUTO_BACKUP', '1') == '1':
+    if not storage.postgres_enabled() and os.getenv('FITTRACK_AUTO_BACKUP', '1') == '1':
         application.state.backup_task = asyncio.create_task(backup_loop())
     if push_enabled() and os.getenv('FITTRACK_PUSH_WORKER', '1') == '1':
         application.state.push_task = asyncio.create_task(push_loop())
@@ -123,22 +123,8 @@ def scoped(kind):
 
 
 
-@contextmanager
 def database():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH, timeout=15)
-    try:
-        with connection:
-            connection.execute('CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id TEXT NOT NULL, date TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(kind, id))')
-            connection.execute('CREATE INDEX IF NOT EXISTS records_date ON records(kind, date)')
-            connection.execute('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL)')
-            connection.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL)')
-            connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, until REAL NOT NULL)')
-            connection.execute('CREATE TABLE IF NOT EXISTS operations (owner TEXT NOT NULL, op TEXT NOT NULL, digest TEXT NOT NULL, response TEXT NOT NULL, PRIMARY KEY(owner, op))')
-            connection.execute('CREATE TABLE IF NOT EXISTS push_deliveries (subscription_id TEXT NOT NULL, slot TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(subscription_id, slot))')
-            yield connection
-    finally:
-        connection.close()
+    return storage.connect(DB_PATH)
 
 
 def save(kind, payload, identifier=None):
@@ -154,7 +140,7 @@ def save(kind, payload, identifier=None):
             if previous:
                 if previous[0] != digest: raise HTTPException(409,'Operation ID already used with different data')
                 return json.loads(previous[1])
-        db.execute('INSERT INTO records VALUES (?, ?, ?, ?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload',
+        db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?, ?, ?, ?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload',
                    (scoped(kind), record['id'], record.get('date', ''), json.dumps(record, allow_nan=False)))
         if operation: db.execute('INSERT INTO operations VALUES (?,?,?,?)',(CURRENT_USER.get(),operation,digest,json.dumps(record)))
     return record
@@ -650,7 +636,7 @@ def auth_attempt(request, username):
     with database() as db:
         db.execute('DELETE FROM attempts WHERE until<?', (time.time(),))
         for key in keys:
-            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1', (key, time.time()+900))
+            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=attempts.count+1', (key, time.time()+900))
             blocked |= db.execute('SELECT count FROM attempts WHERE key=?', (key,)).fetchone()[0] > 20
     if blocked:
         raise HTTPException(429, 'Too many sign-in attempts. Try again in 15 minutes.')
@@ -675,7 +661,7 @@ def register(body: Credentials, request: Request, response: Response):
     try:
         with database() as db:
             db.execute('INSERT INTO users VALUES (?,?,?,?)', (user_id, username, salt, hashed))
-    except sqlite3.IntegrityError:
+    except storage.INTEGRITY_ERRORS:
         raise HTTPException(409, 'Username is unavailable') from None
     from backend.advanced import issue_recovery
     return {**start_session(user_id, username, response), "recovery_code": issue_recovery(user_id)}
@@ -847,6 +833,17 @@ def vapid_configuration():
         return None
 
     subject = os.getenv('FITTRACK_VAPID_SUBJECT', 'https://github.com/antonoww03/FitnessTracker')
+    if storage.postgres_enabled():
+        with database() as db:
+            row = db.execute("SELECT value FROM app_settings WHERE key='vapid'").fetchone()
+            if not row:
+                from backend.maintenance import generate_vapid_keys
+                keys = generate_vapid_keys()
+                value = json.dumps({'public_key': keys['VAPID_PUBLIC_KEY'], 'private_key': keys['VAPID_PRIVATE_KEY']})
+                db.execute("INSERT INTO app_settings VALUES ('vapid',?) ON CONFLICT(key) DO NOTHING", (value,))
+                row = db.execute("SELECT value FROM app_settings WHERE key='vapid'").fetchone()
+            result = {**json.loads(row[0]), 'subject': subject}
+            return result if _valid_vapid_configuration(result) else None
     target = Path(os.getenv('FITTRACK_VAPID_KEY_FILE', str(DB_PATH.parent / 'vapid.json')))
     try:
         if target.is_file():
@@ -1030,7 +1027,7 @@ def trash_entry(kind: KINDS, identifier: str):
         if not row:
             raise HTTPException(404, 'Entry not found')
         payload = {'id': token, 'kind': kind, 'entry': json.loads(row[0]), 'expires': time.time()+86400}
-        db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped('trash'), token, '', json.dumps(payload)))
+        db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped('trash'), token, '', json.dumps(payload)))
         db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped(kind), identifier))
     return {'undo_token': token}
 
@@ -1044,7 +1041,7 @@ def undo(token: str):
         trash = json.loads(row[0]); item = trash['entry']
         if db.execute('SELECT 1 FROM records WHERE kind=? AND id=?', (scoped(trash['kind']), item['id'])).fetchone():
             raise HTTPException(409, 'A newer entry exists; it will not be overwritten')
-        db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped(trash['kind']), item['id'], item['date'], json.dumps(item)))
+        db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped(trash['kind']), item['id'], item['date'], json.dumps(item)))
         db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped('trash'), token))
     return item
 
@@ -1066,7 +1063,7 @@ def copy_day(body: CopyDay):
                 item = json.loads(raw); item.update(date=str(body.target), id=str(body.target) if kind=='weight' else str(uuid.uuid4()), timestamp=datetime.now(timezone.utc).isoformat())
                 if kind == 'weight' and db.execute('SELECT 1 FROM records WHERE kind=? AND id=?', (scoped(kind), item['id'])).fetchone():
                     raise HTTPException(409, 'Target already has a weight measurement')
-                db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped(kind), item['id'], item['date'], json.dumps(item)))
+                db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped(kind), item['id'], item['date'], json.dumps(item)))
                 count += 1
     return {'copied': count}
 
@@ -1099,7 +1096,7 @@ def log_meal(identifier: str, date: Date):
     with database() as db:
         for item in meal['foods']:
             item = {**item, 'date': str(date), 'id': str(uuid.uuid4()), 'timestamp': datetime.now(timezone.utc).isoformat()}
-            db.execute('INSERT INTO records VALUES (?,?,?,?)', (scoped('food'), item['id'], item['date'], json.dumps(item)))
+            db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped('food'), item['id'], item['date'], json.dumps(item)))
     return {'logged': len(meal['foods'])}
 
 
@@ -1155,7 +1152,7 @@ async def restore(request: Request):
         raise HTTPException(422, 'Invalid backup; no data changed') from None
     # Merge by stable ID, never erase other entries; one transaction for the full file.
     with database() as db:
-        db.executemany('INSERT INTO records VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload', clean)
+        db.executemany('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload', clean)
     return {'restored': len(clean)}
 
 

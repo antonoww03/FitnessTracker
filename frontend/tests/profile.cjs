@@ -6,9 +6,19 @@ const { chromium } = require('playwright');
 const base = process.env.FITTRACK_E2E_URL || 'http://127.0.0.1:8018';
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Local disposable app required');
 (async () => {
-  const browser = await chromium.launch({headless:true});
+  const browser = await chromium.launch({headless:true, args:["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]});
   try {
     const context = await browser.newContext();
+    await context.addInitScript(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      window.cameraTracks = [];
+      navigator.mediaDevices.getUserMedia = async (options) => {
+        if (window.denyCamera) throw new DOMException('Denied', 'NotAllowedError');
+        const stream = await original(options);
+        window.cameraTracks.push(...stream.getTracks());
+        return stream;
+      };
+    });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -45,6 +55,25 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
     await page.getByRole('button',{name:'Remove photo'}).click();
     await save();
     assert.equal((await (await context.request.get(base+'/api/profile')).json()).photo_data_url,null);
+    // Camera opens a stream instead of a file picker; failures are recoverable.
+    let filePickers = 0;
+    page.on('filechooser', () => filePickers++);
+    await page.evaluate(() => { window.denyCamera = true; });
+    await page.getByRole('button',{name:'Take a photo',exact:true}).click();
+    await page.getByRole('alert').filter({hasText:'Camera permission denied'}).waitFor();
+    await page.getByRole('button',{name:'Close camera',exact:true}).click();
+    await page.evaluate(() => { window.denyCamera = false; });
+    await page.getByRole('button',{name:'Take a photo',exact:true}).click();
+    await page.getByRole('button',{name:'Capture photo',exact:true}).click();
+    await page.locator('.ft-profile-avatar img').waitFor();
+    assert.equal(filePickers,0);
+    assert(await page.evaluate(() => window.cameraTracks.length > 0 && window.cameraTracks.every(t=>t.readyState==='ended')));
+    await save();
+    assert((await (await context.request.get(base+'/api/profile')).json()).photo_data_url.startsWith('data:image/jpeg;'));
+    await page.getByRole('button',{name:'Take a photo',exact:true}).click();
+    await page.waitForFunction(() => window.cameraTracks.some(t=>t.readyState==='live'));
+    await page.getByRole('button',{name:'Close camera',exact:true}).click();
+    assert(await page.evaluate(() => window.cameraTracks.every(t=>t.readyState==='ended')));
     // Account deletion must work without native browser confirm dialogs and
     // without filling the unrelated change-password fields.
     await page.getByTestId('tool-settings').click();
@@ -72,6 +101,6 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
       headers:{'X-Requested-With':'FitTrack'}, data:{username,password:'profile-test-password-123'},
     })).status(),401);
     assert.deepEqual(errors,[]);
-    console.log('PASS: profile real API save/reload, photo upload/compression/removal, 320/390/768/1280 layout, confirmed account deletion, wrong-password recovery, no runtime errors');
+    console.log('PASS: profile real API save/reload, photo upload/compression/removal, 320/390/768/1280 layout, camera capture/permission denial/stream cleanup, confirmed account deletion, wrong-password recovery, no runtime errors');
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -6,6 +6,8 @@ import { API, errorMessage } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { useDraft } from "@/lib/drafts";
 
+import { ProfileCamera } from "./ProfileCamera";
+
 const EMPTY_PROFILE = {
   first_name: "",
   last_name: "",
@@ -52,7 +54,7 @@ export function Profile({ user }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState("");
   const galleryRef = useRef(null);
-  const cameraRef = useRef(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const dirty = JSON.stringify(profile) !== JSON.stringify(saved);
   useDraft(dirty);
 
@@ -138,10 +140,10 @@ export function Profile({ user }) {
           <h2>{t("My Profile")}</h2>
           <p className="ft-muted">@{user.username}</p>
           <div className="ft-profile-photo-actions">
-            <button type="button" className="ft-secondary" onClick={() => galleryRef.current?.click()}>
+            <button type="button" className="ft-secondary" onClick={() => { setCameraOpen(false); galleryRef.current?.click(); }}>
               <ImagePlus size={17} /> {t("Choose from gallery")}
             </button>
-            <button type="button" className="ft-secondary" onClick={() => cameraRef.current?.click()}>
+            <button type="button" className="ft-secondary" onClick={() => { setError(""); setCameraOpen(true); }}>
               <Camera size={17} /> {t("Take a photo")}
             </button>
             {profile.photo_data_url && (
@@ -151,9 +153,11 @@ export function Profile({ user }) {
             )}
           </div>
           <input ref={galleryRef} className="ft-file-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} />
-          <input ref={cameraRef} className="ft-file-hidden" type="file" accept="image/*" capture="user" onChange={choosePhoto} />
+
         </div>
       </div>
+
+      {cameraOpen && <ProfileCamera onClose={() => setCameraOpen(false)} onCapture={(photo) => { update("photo_data_url", photo); setCameraOpen(false); }} />}
 
       <div className="ft-profile-grid">
         <label>{t("First name")}<input name="first_name" maxLength="80" value={profile.first_name} onChange={(e) => update("first_name", e.target.value)} /></label>

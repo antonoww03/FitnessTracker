@@ -4,6 +4,7 @@ from datetime import date as Date, datetime, timedelta, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Annotated, Literal
+from functools import wraps
 import base64
 import binascii
 import asyncio
@@ -96,10 +97,11 @@ CURRENT_USER = ContextVar("current_user", default="")
 OPERATION_ID = ContextVar("operation_id", default=None)
 
 
-@app.middleware('http')
 async def security_headers(request: Request, call_next):
     """Apply browser protections without breaking the interactive API docs."""
     response = await call_next(request)
+    if request.url.path == '/api' or request.url.path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'private, no-store'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('X-Frame-Options', 'DENY')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -146,7 +148,37 @@ def save(kind, payload, identifier=None):
     return record
 
 
+REPORT_SNAPSHOT = ContextVar('report_snapshot', default=None)
+REPORT_KINDS = ('food', 'training', 'water', 'weight', 'report', 'goals', 'day_goals', 'day_plan', 'program')
+
+
+def report_snapshot(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if REPORT_SNAPSHOT.get() is not None:
+            return function(*args, **kwargs)
+        kinds = {scoped(kind): kind for kind in REPORT_KINDS}
+        data = {kind: [] for kind in REPORT_KINDS}
+        with database() as db:
+            placeholders = ','.join('?' for _ in kinds)
+            rows = db.execute(
+                f'SELECT kind,payload FROM records WHERE kind IN ({placeholders}) ORDER BY date DESC, rowid DESC',
+                list(kinds),
+            ).fetchall()
+        for kind, raw in rows:
+            data[kinds[kind]].append(json.loads(raw))
+        marker = REPORT_SNAPSHOT.set(data)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            REPORT_SNAPSHOT.reset(marker)
+    return wrapped
+
+
 def records(kind, day=None):
+    snapshot = REPORT_SNAPSHOT.get()
+    if snapshot is not None and kind in snapshot:
+        return [row for row in snapshot[kind] if day is None or row.get('date') == str(day)]
     with database() as db:
         query = 'SELECT payload FROM records WHERE kind=?'
         params = [scoped(kind)]
@@ -178,8 +210,8 @@ class Dated(Model):
         return value
 
 
-NonNegative = Annotated[float, Field(ge=0)]
-Positive = Annotated[float, Field(gt=0)]
+NonNegative = Annotated[float, Field(ge=0, le=1_000_000_000)]
+Positive = Annotated[float, Field(gt=0, le=1_000_000_000)]
 
 
 class Goals(Model):
@@ -477,6 +509,7 @@ def update_goals(goals: Goals, date: Date | None = None):
 
 
 @api_router.get('/summary')
+@report_snapshot
 def summary(date: Date):
     foods, trainings, waters = (records(kind, date) for kind in ('food', 'training', 'water'))
     weight = get_weight(date)
@@ -501,6 +534,7 @@ Period = Literal['week', 'month', 'year', 'all']
 
 
 @api_router.get('/reports')
+@report_snapshot
 def get_reports(period: Period = 'all', date: Date | None = None):
     anchor = date or Date.today()
     days = {r['date'] for kind in ('food', 'training', 'water', 'weight', 'report') for r in records(kind)}
@@ -611,8 +645,7 @@ async def authenticate(request: Request, call_next):
     if path in ('/api', '/api/', '/api/auth/login', '/api/auth/register', '/api/auth/reset-password'):
         return await call_next(request)
     token = request.cookies.get('fittrack_session', '')
-    with database() as db:
-        user = db.execute('SELECT user_id FROM sessions WHERE token=? AND expires>?', (session_hash(token), time.time())).fetchone()
+    user = await asyncio.to_thread(session_user, token) if token else None
     if not user:
         return JSONResponse({'detail': 'Please sign in'}, status_code=401)
     operation = request.headers.get('x-operation-id') if request.method == 'POST' else None
@@ -627,6 +660,13 @@ async def authenticate(request: Request, call_next):
     finally:
         CURRENT_USER.reset(marker)
         OPERATION_ID.reset(op_marker)
+
+
+def session_user(token):
+    # Remote PostgreSQL connection and queries must not block the ASGI event loop.
+    with database() as db:
+        return db.execute('SELECT user_id FROM sessions WHERE token=? AND expires>?',
+                          (session_hash(token), time.time())).fetchone()
 
 
 def auth_attempt(request, username):
@@ -1106,6 +1146,7 @@ def live_report(day):
 
 
 @api_router.get('/progress')
+@report_snapshot
 def progress(start: Date, end: Date):
     if end < start or (end-start).days > 366:
         raise HTTPException(422, 'Choose a range of up to 367 days')
@@ -1163,3 +1204,6 @@ def goals_for_day(day):
 from backend.advanced import router as advanced_router, ADVANCED_MODELS
 app.include_router(api_router, prefix='/api')
 app.include_router(advanced_router, prefix='/api')
+
+# Outermost middleware also protects authentication failures and public auth responses.
+app.middleware('http')(security_headers)

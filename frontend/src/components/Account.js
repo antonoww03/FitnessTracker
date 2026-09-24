@@ -120,7 +120,7 @@ export function Account({ children }) {
               autoComplete="username"
               minLength="3"
               maxLength="40"
-              pattern="[A-Za-z0-9_.-]+"
+              pattern={"[A-Za-z0-9_.\\-]+"}
             />
           </label>
           {mode === "reset" && (

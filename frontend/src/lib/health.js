@@ -23,7 +23,10 @@ function nativeCall(action, payload = {}) {
     : `health-${Date.now()}-${Math.random()}`;
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(
-      () => reject(new Error("Apple Health did not respond.")),
+      () => {
+        window.removeEventListener("fittrack-health-result", receive);
+        reject(new Error("Apple Health did not respond."));
+      },
       30000,
     );
     const receive = (event) => {
@@ -34,7 +37,13 @@ function nativeCall(action, payload = {}) {
       else reject(new Error(event.detail.error || "Apple Health request failed."));
     };
     window.addEventListener("fittrack-health-result", receive);
-    target.postMessage({ action, requestId, payload });
+    try {
+      target.postMessage({ action, requestId, payload });
+    } catch (error) {
+      clearTimeout(timeout);
+      window.removeEventListener("fittrack-health-result", receive);
+      reject(error);
+    }
   });
 }
 

@@ -82,7 +82,9 @@ all preview domains. No wildcard CORS setting is needed for the proxy.
 Open Vercel, register an account, keep its recovery code, save a food/water
 entry and a profile, then verify that they remain after a Render restart.
 If the backend has been idle, first open its `/api` URL and wait for it to wake;
-then reload Vercel. A cold start can outlast the frontend's 30-second timeout.
+then reload Vercel. The frontend allows up to 90 seconds per API request for
+cold starts; an unusually slow startup can still time out. Writes are not
+automatically retried by the HTTP client.
 
 ## Free-plan limitations and backups
 

@@ -99,7 +99,13 @@ async function input(el, value) {
   await click(id("tool-profile"));
   assert.equal(d.querySelector('[name="first_name"]').value, "Alex");
   assert.equal(d.querySelector('[name="weight_kg"]').value, "78.5");
-  assert(d.querySelector('input[capture="user"]'));
+  assert.equal(d.querySelectorAll('input[type="file"]').length, 1);
+  await click(btn("Take a photo"));
+  assert(id("profile-camera"));
+  assert(d.querySelector('[role="alert"]').textContent.includes("Camera is unavailable"));
+  assert(btn("Capture photo").disabled);
+  await click(btn("Close camera"));
+  assert(!id("profile-camera"));
   await click(btn("Meals"));
   const check = d.querySelector("input[type=checkbox]");
   await click(check);

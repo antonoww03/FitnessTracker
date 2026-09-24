@@ -389,6 +389,10 @@ Object.assign(dictionary, {
   "Account recovery": "Възстановяване на профил",
   "Save this code privately. It replaces email recovery and can reset your password once.":
     "Запази кода на лично място. Той заменя възстановяването по имейл и може да смени паролата еднократно.",
+  "I understand that deleting my account is permanent.": "Разбирам, че изтриването на акаунта ми е окончателно.",
+  "Current password must contain at least 12 characters.": "Текущата парола трябва да съдържа поне 12 символа.",
+  "Incorrect password": "Грешна парола",
+  "Deleting…": "Изтриване…",
   "Current password": "Текуща парола",
   "New password": "Нова парола",
   "Generate new recovery code": "Генерирай нов код за възстановяване",

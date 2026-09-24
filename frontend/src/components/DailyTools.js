@@ -428,15 +428,22 @@ export function AccountSecurity({ user, onSignedOut }) {
   const [password, setPassword] = useState(""),
     [next, setNext] = useState(""),
     [confirm, setConfirm] = useState(""),
+    [deletePassword, setDeletePassword] = useState(""),
+    [deleteConfirmed, setDeleteConfirmed] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function action(kind) {
+    if (busy) return;
+    if (kind === "account" && (!deleteConfirmed || !deletePassword || confirm !== user.username)) return;
+    if (kind === "account" && deletePassword.length < 12) {
+      setError(t("Current password must contain at least 12 characters."));
+      return;
+    }
     if (
+      kind !== "account" &&
       !window.confirm(
         t(
-          kind === "account"
-            ? "Permanently delete your account and all live data?"
-            : "This signs you out on every device. Pending local entries and the saved workout will be removed. Continue?",
+          "This signs you out on every device. Pending local entries and the saved workout will be removed. Continue?",
         ),
       )
     )
@@ -446,7 +453,7 @@ export function AccountSecurity({ user, onSignedOut }) {
     try {
       if (kind === "account")
         await axios.delete(`${API}/auth/account`, {
-          data: { password, confirm_username: confirm },
+          data: { password: deletePassword, confirm_username: confirm },
         });
       else
         await axios.post(`${API}/auth/${kind}`, {
@@ -458,7 +465,7 @@ export function AccountSecurity({ user, onSignedOut }) {
       setOfflineUser(null);
       onSignedOut();
     } catch (e) {
-      setError(errorMessage(e, t("Could not complete action")));
+      setError(t(errorMessage(e, "Could not complete action")));
     } finally {
       setBusy(false);
     }
@@ -509,25 +516,47 @@ export function AccountSecurity({ user, onSignedOut }) {
       </div>
       <details>
         <summary>{t("Delete account")}</summary>
+        <p>{t("Username")}: <strong>{user.username}</strong></p>
         <p>
           {t(
             "Deletion is permanent for live data. Existing private server backups expire under the operator’s retention policy.",
           )}
         </p>
         <label>
+          {t("Current password")}
+          <input
+            type="password"
+            autoComplete="current-password"
+            maxLength="128"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+          />
+        </label>
+        <label>
           {t("Type your username to confirm")}
           <input
             autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={deleteConfirmed}
+            onChange={(e) => setDeleteConfirmed(e.target.checked)}
+          />
+          {t("I understand that deleting my account is permanent.")}
+        </label>
         <button
+          type="button"
           className="ft-danger-text"
-          disabled={busy || password.length < 12 || confirm !== user.username}
+          disabled={busy || !deletePassword || confirm !== user.username || !deleteConfirmed}
           onClick={() => action("account")}
         >
-          {t("Delete account")}
+          {t(busy ? "Deleting…" : "Delete account")}
         </button>
       </details>
       {error && <p role="alert">{error}</p>}

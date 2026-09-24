@@ -52,13 +52,12 @@ mounted volume. Add it only if the deployment log reports permission denied for
 
 ## Vercel frontend with a persistent backend
 
-This is a split deployment, not a migration of SQLite to Vercel. The backend
-and scheduled notifications still require the Render/Railway service above
-with its persistent disk. Creating that service can incur hosting charges.
+This is a split deployment, not a migration of SQLite to Vercel. The backend runs on Render/Railway, using either external PostgreSQL (the
+free setup in FREE_HOSTING.md) or a paid persistent SQLite disk. Scheduled
+notifications require the backend to be awake; the free service can miss them.
 
 1. Deploy the backend using one of the options above and verify its `/api` URL.
-2. Import the branch containing these changes (`fix/full-functional-audit`
-   until merged). In Vercel select **Root Directory: frontend**, **Framework
+2. Import `main` after the reviewed changes are merged. In Vercel select **Root Directory: frontend**, **Framework
    Preset: Vite**, Node **22.x**, output **build**. Do not use the repository-root
    Services preset shown for the old Create React App version.
 3. `frontend/vercel.json` proxies `/api` to `https://fittrack-api-odyb.onrender.com`

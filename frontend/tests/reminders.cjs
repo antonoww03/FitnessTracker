@@ -82,6 +82,23 @@ const api = w.testing;
   assert.equal(await api.syncBackgroundPush(settings), "enabled");
   assert.equal(w.pushRequests.length, 2);
   assert(JSON.parse(w.pushRequests[1].data).timezone);
+  // A failed native bridge call must release its listener.
+  const active = new Set();
+  const originalAdd = w.addEventListener.bind(w), originalRemove = w.removeEventListener.bind(w);
+  w.addEventListener = (name, fn, ...args) => { if (name === 'fittrack-notification-result') active.add(fn); originalAdd(name, fn, ...args); };
+  w.removeEventListener = (name, fn, ...args) => { if (name === 'fittrack-notification-result') active.delete(fn); originalRemove(name, fn, ...args); };
+  w.FitTrackNotifications = { postMessage() { throw new Error('Bridge closed'); } };
+  await assert.rejects(api.refreshNotificationPermission('alice'), /Bridge closed/);
+  assert.equal(active.size, 0);
+  let expire;
+  const originalTimeout = w.setTimeout;
+  w.setTimeout = (fn) => { expire = fn; return 0; };
+  w.FitTrackNotifications = { postMessage() {} };
+  const timeout = assert.rejects(api.refreshNotificationPermission('alice'), /did not respond/);
+  expire();
+  await timeout;
+  assert.equal(active.size, 0);
+  w.setTimeout = originalTimeout;
   console.log(
     "PASS: reminder settings, permission, schedules and duplicate prevention.",
   );

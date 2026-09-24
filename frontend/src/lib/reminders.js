@@ -40,7 +40,10 @@ function nativeNotificationCall(action, payload = {}) {
     : `notification-${Date.now()}-${Math.random()}`;
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(
-      () => reject(new Error("Notification service did not respond.")),
+      () => {
+        window.removeEventListener("fittrack-notification-result", receive);
+        reject(new Error("Notification service did not respond."));
+      },
       30000,
     );
     const receive = (event) => {
@@ -51,7 +54,13 @@ function nativeNotificationCall(action, payload = {}) {
       else reject(new Error(event.detail.error || "Notification request failed."));
     };
     window.addEventListener("fittrack-notification-result", receive);
-    target.postMessage({ action, requestId, payload });
+    try {
+      target.postMessage({ action, requestId, payload });
+    } catch (error) {
+      clearTimeout(timeout);
+      window.removeEventListener("fittrack-notification-result", receive);
+      reject(error);
+    }
   });
 }
 export const notificationSupport = () =>

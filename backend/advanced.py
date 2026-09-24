@@ -44,7 +44,7 @@ class Ingredient(s.Model):
 
 class Recipe(s.Model):
     name: str = Field(min_length=1,max_length=100)
-    portions: float = Field(gt=0,le=1000)
+    portions: float = Field(ge=0.01,le=1000)
     ingredients: list[Ingredient] = Field(min_length=1,max_length=100)
 
 class Measurements(s.Dated):
@@ -62,7 +62,7 @@ class DayPlan(s.Dated):
     program_id: str | None = Field(default=None,max_length=100)
 
 class RecipeLog(s.Dated):
-    portions: float = Field(gt=0,le=1000)
+    portions: float = Field(ge=0.01,le=1000)
 
 class RecoveryRequest(s.Model):
     password: str = Field(min_length=12,max_length=128)
@@ -156,7 +156,7 @@ def recipe_values(row):
 def log_recipe(identifier: str,body: RecipeLog):
     row=recipe_values(find('recipe',identifier))
     ratio=body.portions/row['portions']
-    return s.save('food',{'date':body.date,'food_name':row['name'],'food_description':f"{body.portions:g} portions · {row['name']}",'grams':sum(i['grams'] for i in row['ingredients'])*ratio,**{k:round(v*ratio,3) for k,v in row['totals'].items()}})
+    return s.save('food',s.validated('food',{'date':body.date,'food_name':row['name'],'food_description':f"{body.portions:g} portions · {row['name']}",'grams':sum(i['grams'] for i in row['ingredients'])*ratio,**{k:round(v*ratio,3) for k,v in row['totals'].items()}}))
 
 @router.get('/measurements')
 def measurements(): return s.records('measurements')

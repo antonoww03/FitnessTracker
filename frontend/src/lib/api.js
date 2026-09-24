@@ -2,7 +2,8 @@ import axios from "axios";
 
 const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/+$/, "");
 export const API = base.endsWith("/api") ? base : `${base}/api`;
-axios.defaults.timeout = 30000;
+// Allow a sleeping free backend to start; never automatically retry writes.
+axios.defaults.timeout = 90000;
 axios.defaults.withCredentials = true;
 axios.defaults.headers.common["X-Requested-With"] = "FitTrack";
 

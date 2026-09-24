@@ -6,7 +6,6 @@ services:
     region: frankfurt
     numInstances: 1
     healthCheckPath: /api
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: FITTRACK_DB_PATH
         value: /app/backend/data/fittrack.sqlite3

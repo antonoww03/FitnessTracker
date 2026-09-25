@@ -105,7 +105,11 @@ function AppContent({ user, onLogout, onSignedOut }) {
       }
     };
     window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
+    window.addEventListener("fittrack-before-update", guard);
+    return () => {
+      window.removeEventListener("beforeunload", guard);
+      window.removeEventListener("fittrack-before-update", guard);
+    };
   }, []);
   const [selectedDate, setSelectedDate] = useState(
     format(new Date(), "yyyy-MM-dd"),

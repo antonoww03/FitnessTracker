@@ -1,5 +1,7 @@
 /* Static app shell only. Personal API data is never stored by the service worker. */
-const CACHE = "fittrack-shell-v9";
+const VERSION = "__FITTRACK_BUILD_ID__";
+const CACHE = "fittrack-shell-" + VERSION;
+const BUILD_ASSETS = /* BUILD_ASSETS */ null;
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -7,7 +9,8 @@ self.addEventListener("install", (event) =>
       const shell = await fetch("/", { cache: "reload" });
       if (!shell.ok) throw new Error("App shell unavailable");
       const html = await shell.clone().text();
-      const assets = [
+      if (BUILD_ASSETS && !html.includes(`content="${VERSION}"`)) throw new Error("Deployment changed during installation");
+      const assets = BUILD_ASSETS || [
         ...html.matchAll(/(?:src|href)=["'](\/(?:static|assets)\/[^"']+)["']/g),
       ].map((m) => m[1]);
       await cache.addAll([
@@ -44,16 +47,13 @@ self.addEventListener("fetch", (event) => {
     return;
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .then(async (r) => {
-          if (r.ok) {
-            const clone = r.clone();
-            const cache = await caches.open(CACHE);
-            await cache.put("/", clone);
-          }
-          return r;
+      // A new document must not overwrite a different release's offline shell.
+      fetch(event.request, { cache: "no-store" })
+        .then(async (response) => {
+          if (!response.ok) return (await caches.match("/", { cacheName: CACHE })) || response;
+          return response;
         })
-        .catch(() => caches.match("/")),
+        .catch(() => caches.match("/", { cacheName: CACHE })),
     );
     return;
   }

@@ -20,6 +20,15 @@
   ],
   "headers": [
     {
+      "source": "/((?!api(?:/|$)|assets/).*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/api/:path*",
       "headers": [
         {
@@ -33,7 +42,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-cache"
+          "value": "no-store"
         }
       ]
     },

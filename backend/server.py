@@ -99,7 +99,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
     allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID', 'X-FitTrack-Owner'],
+    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID', 'X-FitTrack-Owner', 'If-Match'],
 )
 api_router = APIRouter()
 CURRENT_USER = ContextVar("current_user", default="")
@@ -662,7 +662,7 @@ async def authenticate(request: Request, call_next):
     expected_owner = request.headers.get('x-fittrack-owner')
     if expected_owner and expected_owner != user[0]:
         return JSONResponse({'detail': 'Account changed. Sign in again before syncing.', 'code': 'account_changed'}, status_code=409)
-    operation = request.headers.get('x-operation-id') if request.method == 'POST' else None
+    operation = request.headers.get('x-operation-id') if request.method in ('POST', 'PUT', 'DELETE') else None
     if operation and not re.fullmatch(r'[A-Za-z0-9-]{16,80}',operation):
         return JSONResponse({'detail':'Invalid operation ID'},status_code=422)
     op_marker = OPERATION_ID.set(operation)
@@ -1055,36 +1055,68 @@ def validated(kind, body):
         raise HTTPException(422, 'Invalid entry values') from None
 
 
+def entry_revision(row):
+    return hashlib.sha256(json.dumps(row, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def mutate_entry(kind, identifier, request, body=None):
+    """Atomic conditional mutation + durable replay response, scoped to session."""
+    operation = OPERATION_ID.get()
+    expected = request.headers.get('if-match')
+    if expected and not re.fullmatch(r'[a-f0-9]{64}', expected):
+        raise HTTPException(422, 'Invalid entry revision')
+    digest = hashlib.sha256(json.dumps([request.method, kind, identifier, body, expected], sort_keys=True).encode()).hexdigest()
+    with database() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if operation:
+            previous = db.execute('SELECT digest,response FROM operations WHERE owner=? AND op=?', (CURRENT_USER.get(),operation)).fetchone()
+            if previous:
+                if previous[0] != digest:
+                    raise HTTPException(409, 'Operation ID already used with different data')
+                return json.loads(previous[1])
+        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped(kind),identifier)).fetchone()
+        if not row:
+            raise HTTPException(409 if expected else 404, 'Entry changed or deleted. Review the latest version before retrying.')
+        original = json.loads(row[0])
+        if expected and entry_revision(original) != expected:
+            raise HTTPException(409, 'Entry changed or deleted. Review the latest version before retrying.')
+        if request.method == 'PUT':
+            value = validated(kind, body)
+            if value['date'] != original['date']:
+                raise HTTPException(422, 'Use copy to move an entry to another date')
+            value.update(id=identifier, timestamp=original['timestamp'], updated_at=datetime.now(timezone.utc).isoformat())
+            changed = db.execute('UPDATE records SET payload=? WHERE kind=? AND id=? AND payload=?',
+                                 (json.dumps(value),scoped(kind),identifier,row[0])).rowcount
+            result = {**value, '_revision': entry_revision(value)}
+        else:
+            token = str(uuid.uuid4())
+            payload = {'id':token,'kind':kind,'entry':original,'expires':time.time()+86400}
+            changed = db.execute('DELETE FROM records WHERE kind=? AND id=? AND payload=?', (scoped(kind),identifier,row[0])).rowcount
+            if changed:
+                db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped('trash'),token,'',json.dumps(payload)))
+            result = {'undo_token':token}
+        if not changed:
+            raise HTTPException(409, 'Entry changed or deleted. Review the latest version before retrying.')
+        if operation:
+            db.execute('INSERT INTO operations VALUES (?,?,?,?)',(CURRENT_USER.get(),operation,digest,json.dumps(result)))
+        return result
+
+
 @api_router.put('/entries/{kind}/{identifier}')
-def edit_entry(kind: KINDS, identifier: str, body: dict):
-    previous = next((r for r in records(kind) if r['id'] == identifier), None)
-    if previous is None:
-        raise HTTPException(404, 'Entry not found')
-    payload = validated(kind, body)
-    if payload['date'] != previous['date']:
-        raise HTTPException(422, 'Use copy to move an entry to another date')
-    return save(kind, {**payload, 'id': identifier, 'timestamp': previous['timestamp']})
+def edit_entry(kind: KINDS, identifier: str, body: dict, request: Request):
+    return mutate_entry(kind, identifier, request, body)
 
 
 @api_router.get('/history')
 def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'water', 'weight'] = 'all'):
     if end < start or (end-start).days > 366:
         raise HTTPException(422, 'Choose a range of up to 367 days')
-    return sorted([{**r, 'kind': k} for k in MODELS if kind in ('all', k) for r in records(k) if str(start) <= r['date'] <= str(end)], key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
+    return sorted([{**r, 'kind': k, '_revision': entry_revision(r)} for k in MODELS if kind in ('all', k) for r in records(k) if str(start) <= r['date'] <= str(end)], key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
 
 
 @api_router.delete('/entries/{kind}/{identifier}')
-def trash_entry(kind: KINDS, identifier: str):
-    token = str(uuid.uuid4())
-    with database() as db:
-        db.execute('BEGIN IMMEDIATE')
-        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped(kind), identifier)).fetchone()
-        if not row:
-            raise HTTPException(404, 'Entry not found')
-        payload = {'id': token, 'kind': kind, 'entry': json.loads(row[0]), 'expires': time.time()+86400}
-        db.execute('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?)', (scoped('trash'), token, '', json.dumps(payload)))
-        db.execute('DELETE FROM records WHERE kind=? AND id=?', (scoped(kind), identifier))
-    return {'undo_token': token}
+def trash_entry(kind: KINDS, identifier: str, request: Request):
+    return mutate_entry(kind, identifier, request)
 
 
 @api_router.post('/undo/{token}')
@@ -1221,6 +1253,10 @@ def goals_for_day(day):
 from backend.advanced import router as advanced_router, ADVANCED_MODELS
 app.include_router(api_router, prefix='/api')
 app.include_router(advanced_router, prefix='/api')
+
+from backend.diagnostics import router as diagnostics_router, diagnostic_requests
+app.include_router(diagnostics_router, prefix='/api')
+app.middleware('http')(diagnostic_requests)
 
 # Outermost middleware also protects authentication failures and public auth responses.
 app.middleware('http')(security_headers)

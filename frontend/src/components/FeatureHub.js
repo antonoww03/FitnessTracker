@@ -118,8 +118,8 @@ export function EntryEditor({ entry, onClose, onSave }) {
     e.preventDefault();
     setBusy(true);
     try {
-      await axios.put(`${API}/entries/${entry.kind}/${entry.id}`, value);
-      toast.success(t("Saved"));
+      const {data} = await axios.put(`${API}/entries/${entry.kind}/${entry.id}`, value, {offlineEntry: entry});
+      toast.success(t(data.queued ? "Change queued for sync" : "Saved"));
       onSave();
     } catch (err) {
       toast.error(errorMessage(err, t("Could not complete action")));
@@ -335,6 +335,11 @@ export function HistoryView({ selectedDate, onRefresh }) {
       });
     return () => c.abort();
   }, [start, end, kind, revision]);
+  useEffect(() => {
+    const synced = () => setRevision(x => x + 1);
+    window.addEventListener("fittrack-synced", synced);
+    return () => window.removeEventListener("fittrack-synced", synced);
+  }, []);
   function refresh() {
     setRevision((x) => x + 1);
     onRefresh();
@@ -344,8 +349,10 @@ export function HistoryView({ selectedDate, onRefresh }) {
     try {
       const { data } = await axios.delete(
         `${API}/entries/${row.kind}/${row.id}`,
+        {offlineEntry: row},
       );
       refresh();
+      if (data.queued) { toast.success(t("Change queued for sync")); return; }
       toast(t("Entry deleted"), {
         duration: 15000,
         action: {
@@ -439,6 +446,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
                           ? `${row.amount_ml} ml`
                           : `${row.weight_kg} kg`}
                   </p>
+                  {row.pendingAction && <p role="status">{t(row.pendingAction)}</p>}
                   {row.sets_log?.map((ex, i) => (
                     <p className="ft-muted" key={"set-" + i}>
                       {ex.name}: {ex.reps} × {ex.weight_kg} kg{" "}
@@ -465,14 +473,14 @@ export function HistoryView({ selectedDate, onRefresh }) {
                   )}
                   <button
                     className="ft-secondary"
-                    disabled={busy}
+                    disabled={busy || row.queued}
                     onClick={() => setEdit(row)}
                   >
                     {t("Edit")}
                   </button>
                   <button
                     className="ft-danger-text"
-                    disabled={busy}
+                    disabled={busy || row.queued}
                     onClick={() => remove(row)}
                   >
                     {t("Delete")}

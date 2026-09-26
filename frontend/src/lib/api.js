@@ -1,4 +1,5 @@
 import axios from "axios";
+import { reportDiagnostic } from "./diagnostics";
 
 const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/+$/, "");
 export const API = base.endsWith("/api") ? base : `${base}/api`;
@@ -18,5 +19,9 @@ export const pendingRequests = () => requests.size > 0;
 axios.interceptors.request.use(config => { requests.add(config); return config; });
 axios.interceptors.response.use(
   response => { requests.delete(response.config); return response; },
-  error => { requests.delete(error.config); return Promise.reject(error); },
+  error => {
+    requests.delete(error.config);
+    if (error.response?.status >= 500) reportDiagnostic("api", error.response.status, error.response.headers?.["x-request-id"]);
+    return Promise.reject(error);
+  },
 );

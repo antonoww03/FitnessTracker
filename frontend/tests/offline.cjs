@@ -11,7 +11,7 @@ const entry = path.join(root, "tests", ".offline-entry.js");
 try {
   fs.writeFileSync(
     entry,
-    "import * as offline from '../src/lib/offline'; import axios from 'axios'; window.testing={...offline,axios};",
+    "import * as offline from '../src/lib/offline'; import * as diagnostics from '../src/lib/diagnostics'; import axios from 'axios'; window.testing={...offline,...diagnostics,axios};",
   );
   execFileSync(
     "npx",
@@ -103,6 +103,51 @@ const api = w.testing;
   };
   await api.syncOffline();
   assert.equal((await api.queue()).length, 0);
+  const entry = {id:"water-row",kind:"water",date:"2026-09-26",amount_ml:250,_revision:"a".repeat(64)};
+  const historyUrl = "/api/history?start=2026-09-26&end=2026-09-26&kind=all";
+  api.axios.defaults.adapter = async config => ({data:[entry],status:200,headers:{},config});
+  await api.axios.get(historyUrl);
+  const offline = async config => { throw Object.assign(new Error("network"),{config}); };
+  api.axios.defaults.adapter = offline;
+  let edited = await api.axios.put("/api/entries/water/water-row", {date:entry.date,amount_ml:500}, {offlineEntry:entry});
+  assert.equal(edited.status,202);
+  assert.equal((await api.queue())[0].config.method,"put");
+  assert.equal((await api.queue())[0].config.headers["If-Match"],entry._revision);
+  let view = (await api.axios.get(historyUrl)).data[0];
+  assert.equal(view.amount_ml,500); assert(view.queued);
+  api.axios.defaults.adapter = async config => {throw Object.assign(new Error("conflict"),{config,response:{status:409,data:{detail:"Entry changed"}}});};
+  await api.syncOffline();
+  assert.equal((await api.queue()).length,1);
+  assert.equal((await api.queue())[0].error,"Entry changed");
+  api.axios.defaults.adapter = async config => ({data:{...entry,amount_ml:500,_revision:"b".repeat(64)},status:200,headers:{},config});
+  await api.syncOffline();
+  assert.equal((await api.queue()).length,0);
+  api.axios.defaults.adapter = offline;
+  view=(await api.axios.get(historyUrl)).data[0];
+  assert.equal(view.amount_ml,500); assert.equal(view._revision,"b".repeat(64));
+  await api.axios.delete("/api/entries/water/water-row", {offlineEntry:view});
+  assert.equal((await api.queue())[0].config.method,"delete");
+  assert.equal((await api.axios.get(historyUrl)).data[0].pendingAction,"Pending deletion");
+  await api.discardQueued((await api.queue())[0].key);
+  assert.equal((await api.axios.get(historyUrl)).data[0].queued,undefined);
+  await api.axios.delete("/api/entries/water/water-row", {offlineEntry:view});
+  api.axios.defaults.adapter = async config => ({data:{undo_token:"undo"},status:200,headers:{},config});
+  await api.syncOffline();
+  api.axios.defaults.adapter = offline;
+  assert.equal((await api.axios.get(historyUrl)).data.length,0);
+  await assert.rejects(api.axios.put("/api/entries/water/legacy", {amount_ml:1}), /History online/);
+  const events=[];
+  w.fetch = async (url,options) => {events.push({url,body:JSON.parse(options.body)});return {};};
+  api.installDiagnostics();
+  w.dispatchEvent(new w.ErrorEvent("error", {message:"SECRET health data",filename:"https://example.invalid/private"}));
+  w.dispatchEvent(new w.ErrorEvent("error", {message:"other secret"}));
+  api.reportDiagnostic("api",500,"a".repeat(32));
+  assert.equal(events.length,2);
+  assert(!JSON.stringify(events).includes("SECRET"));
+  assert.deepEqual(Object.keys(events[0].body).sort(),["kind","release","status"]);
+  for(let code=501;code<520;code++) api.reportDiagnostic("api",code);
+  assert.equal(events.length,10,"Diagnostics are capped per page");
+  console.log("PASS: offline edits/deletes, conflict retention, atomic cache acknowledgement, cancel pending deletion, privacy-safe diagnostics and cap");
   api.setOfflineUser({ id: "bob", username: "bob" });
   await api.setOfflineEnabled(true);
   await api.clearOffline("alice");

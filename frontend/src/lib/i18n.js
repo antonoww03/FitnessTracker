@@ -511,3 +511,11 @@ Object.assign(dictionary, {
   "Could not prepare offline data. Keep the connection and retry.":
     "Офлайн данните не са готови. Остани с интернет и опитай пак.",
 });
+
+Object.assign(dictionary, {
+  "Background delivery requires the server to be running. On free hosting, reminders may be delayed or missed while it sleeps.": "Напомнянията във фонов режим изискват работещ сървър. При безплатен хостинг може да закъснеят или да бъдат пропуснати, докато сървърът спи.",
+});
+
+Object.assign(dictionary, {
+  "Connecting to the server. After inactivity, startup may take about a minute.": "Свързване със сървъра. След неактивност стартирането може да отнеме около минута.",
+});

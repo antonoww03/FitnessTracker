@@ -86,11 +86,20 @@ async def lifespan(application):
 
 
 app = FastAPI(title='FitTrack API', lifespan=lifespan)
+
+
+async def integrity_conflict(request, exception):
+    return JSONResponse({'detail': 'Data changed during this request. Refresh and try again.'}, status_code=409)
+
+
+for integrity_error in storage.INTEGRITY_ERRORS:
+    app.add_exception_handler(integrity_error, integrity_conflict)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
     allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID'],
+    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID', 'X-FitTrack-Owner'],
 )
 api_router = APIRouter()
 CURRENT_USER = ContextVar("current_user", default="")
@@ -650,6 +659,9 @@ async def authenticate(request: Request, call_next):
     user = await asyncio.to_thread(session_user, token) if token else None
     if not user:
         return JSONResponse({'detail': 'Please sign in'}, status_code=401)
+    expected_owner = request.headers.get('x-fittrack-owner')
+    if expected_owner and expected_owner != user[0]:
+        return JSONResponse({'detail': 'Account changed. Sign in again before syncing.', 'code': 'account_changed'}, status_code=409)
     operation = request.headers.get('x-operation-id') if request.method == 'POST' else None
     if operation and not re.fullmatch(r'[A-Za-z0-9-]{16,80}',operation):
         return JSONResponse({'detail':'Invalid operation ID'},status_code=422)
@@ -1065,6 +1077,7 @@ def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'wa
 def trash_entry(kind: KINDS, identifier: str):
     token = str(uuid.uuid4())
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped(kind), identifier)).fetchone()
         if not row:
             raise HTTPException(404, 'Entry not found')
@@ -1077,6 +1090,7 @@ def trash_entry(kind: KINDS, identifier: str):
 @api_router.post('/undo/{token}')
 def undo(token: str):
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped('trash'), token)).fetchone()
         if not row or json.loads(row[0])['expires'] < time.time():
             raise HTTPException(404, 'Undo expired')
@@ -1100,6 +1114,7 @@ def copy_day(body: CopyDay):
         raise HTTPException(422, 'Choose a different source date')
     count = 0
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
         for kind in set(body.kinds):
             for (raw,) in db.execute('SELECT payload FROM records WHERE kind=? AND date=?', (scoped(kind), str(body.source))).fetchall():
                 item = json.loads(raw); item.update(date=str(body.target), id=str(body.target) if kind=='weight' else str(uuid.uuid4()), timestamp=datetime.now(timezone.utc).isoformat())

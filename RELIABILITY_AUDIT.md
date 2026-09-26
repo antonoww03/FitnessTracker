@@ -11,6 +11,10 @@ and service-worker.js with the correct content types and Cache-Control: no-store
 /api returned 200 JSON with private/no-store; unauthenticated /api/auth/me returned
 401. Vercel's same-origin proxy remains intact. API traffic and version metadata
 are excluded from service-worker caching; hashed release assets stay cacheable.
+A missing /assets/fittrack-audit-missing.js returned 200 HTML in production.
+Fixed the Vercel SPA fallback to exclude asset directories and release metadata,
+so missing files remain 404 instead of being mistaken for successful downloads.
+A routing regression covers this alongside the existing /api exclusion.
 PR #8 release tests cover shared build identity, failed/mismatched installs and
 preserving an older worker's matching offline shell. No forced activation/reload.
 

@@ -92,3 +92,6 @@
 ::-webkit-scrollbar-thumb:hover {
     background: #3A3A3A;
 }
+
+.ft-update-banner { margin: 12px auto; width: min(600px, calc(100% - 24px)); padding: 14px; border: 1px solid #4d7cff; border-radius: 12px; background: #141820; color: #fff; }
+.ft-update-banner p { margin: 0 0 8px; }

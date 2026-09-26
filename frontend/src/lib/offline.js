@@ -261,3 +261,11 @@ export function installOffline() {
   );
   window.addEventListener("online", syncOffline);
 }
+
+// Unlike queue(), fail closed on storage errors before a requested app reload.
+export async function pendingOfflineUpdates() {
+  if (!user) return false;
+  const owner = user.id;
+  const items = await transaction(store => store.getAll());
+  return user?.id !== owner || items.some(row => row.key.startsWith(owner + ":queue:"));
+}

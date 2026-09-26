@@ -36,6 +36,7 @@ jobs:
       - run: npm run test:reminders --prefix frontend
       - run: node frontend/tests/service-worker.cjs
       - run: npm run build --prefix frontend
+      - run: node frontend/tests/release.cjs
       - name: Build and smoke-test production image
         run: |
           docker build -t fittrack-ci .
@@ -78,6 +79,7 @@ jobs:
           PY
       - run: npm run test:e2e --prefix frontend
       - run: node frontend/tests/profile.cjs
+      - run: node frontend/tests/updates.cjs
       - run: npm run test:mobile --prefix frontend
       - uses: actions/upload-artifact@v7
         if: always()

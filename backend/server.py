@@ -102,6 +102,8 @@ async def security_headers(request: Request, call_next):
     response = await call_next(request)
     if request.url.path == '/api' or request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'private, no-store'
+    if request.url.path in ('/service-worker.js', '/version.json') or 'text/html' in response.headers.get('content-type', ''):
+        response.headers['Cache-Control'] = 'no-store'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('X-Frame-Options', 'DENY')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')

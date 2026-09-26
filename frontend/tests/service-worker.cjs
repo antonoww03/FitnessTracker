@@ -13,7 +13,6 @@ let intercepted=false;handlers.fetch({request:{url:'https://test.invalid/api/sum
 // otherwise be terminated and the next offline reload lose that asset.
 for (const request of [
   {url:'https://test.invalid/assets/late.js',method:'GET'},
-  {url:'https://test.invalid/',method:'GET',mode:'navigate'},
 ]) {
   const originalPut=cache.put;
   let release, finished=false;
@@ -26,6 +25,10 @@ for (const request of [
   release(); await promise;
   cache.put=originalPut;
 }
+const installedShell=stored.get('/');
+handlers.fetch({request:{url:'https://test.invalid/',method:'GET',mode:'navigate'},respondWith:p=>{promise=p}});await promise;
+assert.equal(stored.get('/'),installedShell,'Online navigation must preserve the installed offline shell');
+let versionIntercepted=false;handlers.fetch({request:{url:'https://test.invalid/version.json',method:'GET'},respondWith:()=>{versionIntercepted=true}});assert(!versionIntercepted);
 offline=true;handlers.fetch({request:{url:'https://test.invalid/',method:'GET',mode:'navigate'},respondWith:p=>{promise=p}});assert.equal(await promise,response);
 // Model a precached public file with Vary: Origin: a module request carries
 // an Origin header unlike the install-time request. It must work offline.

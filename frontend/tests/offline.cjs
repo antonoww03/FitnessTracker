@@ -42,7 +42,9 @@ const api = w.testing;
 (async () => {
   api.installOffline();
   api.setOfflineUser({ id: "alice", username: "alice" });
-  await api.setOfflineEnabled(true);
+  const enabling = api.setOfflineEnabled(true);
+  assert(api.pendingOfflineStorage(), "Update must wait for IndexedDB writes");
+  await enabling;
   api.axios.defaults.adapter = async (config) => ({
     data: { total: 12 },
     status: 200,
@@ -64,6 +66,7 @@ const api = w.testing;
   assert.equal((await api.queue()).length, 1);
   const operation = (await api.queue())[0].config.headers["X-Operation-ID"];
   assert(operation);
+  assert.equal((await api.queue())[0].config.headers["X-FitTrack-Owner"], "alice");
   api.setOfflineUser({ id: "bob", username: "bob" });
   await api.setOfflineEnabled(true);
   assert.equal((await api.queue()).length, 0);
@@ -100,8 +103,13 @@ const api = w.testing;
   };
   await api.syncOffline();
   assert.equal((await api.queue()).length, 0);
+  api.setOfflineUser({ id: "bob", username: "bob" });
+  await api.setOfflineEnabled(true);
+  await api.clearOffline("alice");
+  assert.equal((await api.cachedAccount()).id, "bob", "Alice cleanup must preserve Bob cached account");
   await api.clearOffline();
   assert.equal(await api.cachedAccount(), undefined);
+  assert.equal(api.pendingOfflineStorage(), false);
   console.log(
     "PASS: offline cache, queued writes, account isolation, delayed-response isolation, retry preservation, stable operation ID and cleanup.",
   );

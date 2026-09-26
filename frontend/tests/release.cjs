@@ -42,3 +42,10 @@ const vm=require('node:vm');
   assert.deepEqual(deleted,['fittrack-shell-old']);
   console.log('PASS: release mismatch fails installation, offline shell survives newer navigation, cleanup stays namespaced');
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+// Missing assets/metadata must be 404, never a successful HTML SPA response.
+const rewrites=JSON.parse(fs.readFileSync(path.join(__dirname,'../vercel.json'),'utf8')).rewrites;
+const fallback=new RegExp('^'+rewrites.at(-1).source+'$');
+for(const url of ['/api','/api/auth/me','/assets/missing.js','/static/missing.css','/service-worker.js','/version.json','/manifest.json','/icon-192.png']) assert(!fallback.test(url),url);
+for(const url of ['/','/profile','/history']) assert(fallback.test(url),url);
+console.log('PASS: SPA fallback excludes API, missing assets and release metadata');

@@ -3,6 +3,8 @@ import { storage } from "./i18n";
 let user = null,
   working = false,
   clearing = false;
+let storageOperations = 0;
+export const pendingOfflineStorage = () => storageOperations > 0 || clearing;
 const failures = new Map();
 export const syncStatus = () => ({
   working,
@@ -24,8 +26,10 @@ const openDB = () =>
     r.onerror = () => reject(r.error);
   });
 async function transaction(action) {
-  const db = await openDB();
+  storageOperations++;
+  let db;
   try {
+    db = await openDB();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction("items", "readwrite"),
         r = action(tx.objectStore("items"));
@@ -38,7 +42,8 @@ async function transaction(action) {
       tx.onabort = () => reject(tx.error);
     });
   } finally {
-    db.close();
+    db?.close();
+    storageOperations--;
   }
 }
 const put = (key, value) => transaction((s) => s.put({ key, value }));
@@ -79,14 +84,30 @@ export async function clearOffline(ownerId = user?.id) {
   failures.clear();
   if (previous) storage.set(`fittrack-updated:${previous.id}`, "");
   try {
-    const all = await transaction((s) => s.getAll());
-    for (const r of all)
-      if (r.key === "account" || r.key.startsWith(previous?.id + ":"))
-        await remove(r.key);
-  } catch {}
-  clearing = false;
-  offlineChanged();
+    const db = await openDB();
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction("items", "readwrite");
+        const store = tx.objectStore("items");
+        const request = store.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const row = cursor.value;
+          if ((row.key === "account" && row.value?.id === ownerId) ||
+              (ownerId && row.key.startsWith(ownerId + ":"))) cursor.delete();
+          cursor.continue();
+        };
+        tx.oncomplete = resolve;
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+    } finally { db.close(); }
+  } finally {
+    clearing = false;
+    offlineChanged();
+  }
 }
+
 export async function queue() {
   const owner = user?.id;
   if (!owner) return [];
@@ -118,13 +139,13 @@ const writable = (config) =>
     new URL(config.url, location.origin).pathname,
   );
 export async function syncOffline() {
-  if (working || !user || !navigator.onLine) return;
+  if (working || clearing || !user || !navigator.onLine) return;
   working = true;
   offlineChanged();
   const owner = user.id;
   try {
     for (const item of await queue()) {
-      if (user?.id !== owner) break;
+      if (user?.id !== owner || clearing) break;
       try {
         await axios.request({
           ...item.config,
@@ -158,6 +179,8 @@ export function installOffline() {
     if (config.expectedOwner && config.expectedOwner !== user?.id)
       throw new Error("Account changed; sync stopped");
     config.offlineOwner = user?.id;
+    // Cookies are shared across tabs; the server must verify the intended owner.
+    if (user && !/\/auth\/(login|register|reset-password)$/.test(config.url)) config.headers["X-FitTrack-Owner"] = user.id;
     if (writable(config) && !config.headers["X-Operation-ID"])
       config.headers["X-Operation-ID"] = crypto.randomUUID
         ? crypto.randomUUID()
@@ -230,7 +253,7 @@ export function installOffline() {
           config: {
             url: config.url,
             method: "post",
-            headers: { "X-Operation-ID": id },
+            headers: { "X-Operation-ID": id, "X-FitTrack-Owner": config.offlineOwner },
             data,
           },
           time: Date.now(),
@@ -252,7 +275,7 @@ export function installOffline() {
       if (config.method === "get") {
         try {
           const data = await get(user.id + ":cache:" + urlFor(config));
-          if (data !== undefined)
+          if (data !== undefined && !clearing && config.offlineOwner === user?.id)
             return { data, status: 200, config, offline: true };
         } catch {}
       }

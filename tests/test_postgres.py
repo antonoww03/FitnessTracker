@@ -7,6 +7,8 @@ pytestmark = pytest.mark.skipif(not os.getenv('FITTRACK_TEST_POSTGRES_URL'), rea
 
 
 def test_concurrent_operations_and_rollback():
+    with server.database() as db:
+        db.execute("INSERT INTO users VALUES ('same-owner','concurrency-test','salt','hash')")
     def write(_):
         owner = server.CURRENT_USER.set('same-owner')
         operation = server.OPERATION_ID.set('same-operation')

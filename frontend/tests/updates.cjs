@@ -25,6 +25,10 @@ if (!['127.0.0.1','localhost'].includes(new URL(base).hostname)) throw new Error
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     const update = page.getByRole('button',{name:'Update now',exact:true});
     await update.waitFor();
+    for (const width of [320, 390, 768]) {
+      await page.setViewportSize({width, height:844});
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Update banner must fit mobile viewport");
+    }
     await update.click();
     await page.getByRole('alert').filter({hasText:'Save or discard'}).waitFor();
     assert.equal(await page.getByLabel('First name',{exact:true}).inputValue(),'Unsaved');

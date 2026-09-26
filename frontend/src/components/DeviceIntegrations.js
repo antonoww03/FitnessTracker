@@ -220,6 +220,7 @@ export function DeviceIntegrations({ user }) {
               : "Install FitTrack on your Home Screen and save reminders to enable background delivery when the server supports Web Push.",
           )}
         </p>
+        <p className="ft-muted">{t("Background delivery requires the server to be running. On free hosting, reminders may be delayed or missed while it sleeps.")}</p>
       </section>
       <section className="ft-card ft-form" data-testid="apple-health-settings">
         <h2>{t("Apple Health")}</h2>

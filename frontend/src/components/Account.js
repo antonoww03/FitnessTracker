@@ -16,10 +16,16 @@ installOffline();
 export function Account({ children }) {
   const [user, setUser] = useState(null),
     [loading, setLoading] = useState(true),
+    [slowConnection, setSlowConnection] = useState(false),
     [mode, setMode] = useState("login"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [recovery, setRecovery] = useState("");
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => setSlowConnection(true), 8000);
+    return () => clearTimeout(timer);
+  }, [loading]);
   function accept(data) {
     const account = { id: data.id, username: data.username };
     setOfflineUser(account);
@@ -52,7 +58,7 @@ export function Account({ children }) {
     const id = axios.interceptors.response.use(
       (r) => r,
       (e) => {
-        if (e.response?.status === 401 && !e.config?.skipOffline) {
+        if ((e.response?.status === 401 || e.response?.data?.code === "account_changed") && !e.config?.skipOffline) {
           setUser(null);
           setOfflineUser(null);
         }
@@ -80,7 +86,7 @@ export function Account({ children }) {
       setBusy(false);
     }
   }
-  if (loading) return <div className="ft-app ft-auth">{t("Loading…")}</div>;
+  if (loading) return <div className="ft-app ft-auth" role="status">{t(slowConnection ? "Connecting to the server. After inactivity, startup may take about a minute." : "Loading…")}</div>;
   if (recovery)
     return (
       <div className="ft-app ft-auth">

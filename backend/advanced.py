@@ -105,8 +105,10 @@ def reset_password(body: ResetPassword,request: Request):
     with s.database() as db:
         recovery_schema(db)
         user=db.execute('SELECT id FROM users WHERE username=?',(body.username.lower(),)).fetchone()
-        row=db.execute('SELECT code_hash FROM recovery WHERE user_id=?',(user[0] if user else '',)).fetchone()
-        if not row or not secrets.compare_digest(row[0],s.session_hash(body.recovery_code.strip())):
+        # Consume and validate atomically: concurrent resets cannot reuse a code.
+        row=db.execute('DELETE FROM recovery WHERE user_id=? AND code_hash=? RETURNING user_id',
+                       (user[0] if user else '',s.session_hash(body.recovery_code.strip()))).fetchone()
+        if not row:
             raise HTTPException(400,'Invalid recovery code or username')
         db.execute('UPDATE users SET salt=?,password=? WHERE id=?',(salt,password,user[0]))
         db.execute('DELETE FROM recovery WHERE user_id=?',(user[0],))

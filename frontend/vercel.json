@@ -14,7 +14,7 @@
       "destination": "https://fittrack-api-odyb.onrender.com/api/:path*"
     },
     {
-      "source": "/((?!api(?:/|$)).*)",
+      "source": "/((?!api(?:/|$)|assets(?:/|$)|static(?:/|$)|service-worker\\.js$|version\\.json$|manifest\\.json$|icon-[0-9]+\\.png$).*)",
       "destination": "/index.html"
     }
   ],

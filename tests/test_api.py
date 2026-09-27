@@ -23,6 +23,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(server, 'DB_PATH', tmp_path / 'data.sqlite3')
     monkeypatch.delenv('USDA_API_KEY', raising=False)
     monkeypatch.setenv('FITTRACK_AUTH_DISABLED', '1')
+    # Legacy route-unit fixture also runs on disposable PostgreSQL.
+    # Production startup rejection is covered separately in test_security_limits.
+    from backend import security
+    monkeypatch.setattr(security, 'validate_auth_mode', lambda: None)
     with TestClient(server.app) as client:
         yield client
 

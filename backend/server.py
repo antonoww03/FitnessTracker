@@ -42,6 +42,8 @@ DEFAULT_GOALS = dict(zip(MACROS, (2000, 150, 65, 250, 50, 30)))
 @asynccontextmanager
 async def lifespan(application):
     """Own the backup and reminder workers for exactly one app process."""
+    from backend.security import validate_auth_mode
+    validate_auth_mode()
     application.state.backup_task = None
     application.state.push_task = None
     with database():
@@ -672,11 +674,22 @@ async def authenticate(request: Request, call_next):
         return JSONResponse({'detail':'Invalid operation ID'},status_code=422)
     op_marker = OPERATION_ID.set(operation)
     marker = CURRENT_USER.set(user[0])
+    from backend.security import heavy_policy, consume_budget, HEAVY_SLOTS
+    acquired = False
     try:
+        policy = heavy_policy(path, request.method)
+        if policy:
+            if not await asyncio.to_thread(consume_budget, database, user[0], policy):
+                return JSONResponse({'detail':'Too many requests for this operation. Try again shortly.'}, status_code=429, headers={'Retry-After':'60'})
+            acquired = HEAVY_SLOTS.acquire(blocking=False)
+            if not acquired:
+                return JSONResponse({'detail':'Server busy. Try again shortly.'}, status_code=503, headers={'Retry-After':'2'})
         response = await call_next(request)
         response.headers['Cache-Control'] = 'no-store'
         return response
     finally:
+        if acquired:
+            HEAVY_SLOTS.release()
         CURRENT_USER.reset(marker)
         OPERATION_ID.reset(op_marker)
 
@@ -1271,6 +1284,9 @@ app.include_router(advanced_router, prefix='/api')
 from backend.diagnostics import router as diagnostics_router, diagnostic_requests
 app.include_router(diagnostics_router, prefix='/api')
 app.middleware('http')(diagnostic_requests)
+
+from backend.security import RequestBodyLimit
+app.add_middleware(RequestBodyLimit)
 
 # Outermost middleware also protects authentication failures and public auth responses.
 app.middleware('http')(security_headers)

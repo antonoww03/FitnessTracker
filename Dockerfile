@@ -8,7 +8,7 @@ RUN npm run build
 
 FROM python:3.12-slim
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOST=0.0.0.0 PORT=8000 FITTRACK_DB_PATH=/app/backend/data/fittrack.sqlite3
+ENV FITTRACK_ENV=production PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOST=0.0.0.0 PORT=8000 FITTRACK_DB_PATH=/app/backend/data/fittrack.sqlite3
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ ./backend/

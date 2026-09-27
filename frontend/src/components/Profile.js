@@ -50,6 +50,7 @@ export function Profile({ user }) {
   const [saved, setSaved] = useState(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState("");
@@ -59,9 +60,13 @@ export function Profile({ user }) {
   useDraft(dirty);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
     axios
       .get(`${API}/profile`)
       .then(({ data }) => {
+        if (!active) return;
         const normalized = {
           ...EMPTY_PROFILE,
           ...data,
@@ -73,9 +78,10 @@ export function Profile({ user }) {
         setSaved(normalized);
         setLoaded(true);
       })
-      .catch((e) => setError(errorMessage(e, t("Could not load profile."))))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch((e) => { if (active) setError(errorMessage(e, t("Could not load profile."))); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [attempt]);
 
   const update = (key, value) => setProfile((current) => ({ ...current, [key]: value }));
   const choosePhoto = async (event) => {
@@ -121,7 +127,7 @@ export function Profile({ user }) {
   };
 
   if (loading) return <p role="status">{t("Loading…")}</p>;
-  if (!loaded) return <div role="alert">{error}<button className="ft-secondary" onClick={() => window.location.reload()}>{t("Retry")}</button></div>;
+  if (!loaded) return <div role="alert">{error}<button className="ft-secondary" onClick={() => setAttempt(value => value + 1)}>{t("Retry")}</button></div>;
   const initials = `${profile.first_name?.[0] || ""}${profile.last_name?.[0] || ""}` || user.username.slice(0, 2);
   return (
     <form className="ft-card ft-form ft-profile" onSubmit={submit} data-testid="profile-page">

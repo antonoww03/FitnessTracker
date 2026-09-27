@@ -1,4 +1,6 @@
 import axios from "axios";
+import { t } from "./i18n";
+import { beginRequest, endRequest } from "./connection";
 import { reportDiagnostic } from "./diagnostics";
 
 const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/+$/, "");
@@ -9,6 +11,8 @@ axios.defaults.withCredentials = true;
 axios.defaults.headers.common["X-Requested-With"] = "FitTrack";
 
 export function errorMessage(error, fallback) {
+  if (!error.response && !axios.isCancel(error)) return t("Connection interrupted. Your input is still here. Check History before submitting again if a save may have reached the server.");
+  if (error.response?.status >= 500) return t("The server is temporarily unavailable. Your input is still here. Try again shortly.");
   const detail = error.response?.data?.detail;
   return typeof detail === "string" ? detail : fallback;
 }
@@ -16,11 +20,12 @@ export function errorMessage(error, fallback) {
 // A deliberate app refresh must not interrupt a request before the UI receives it.
 const requests = new Set();
 export const pendingRequests = () => requests.size > 0;
-axios.interceptors.request.use(config => { requests.add(config); return config; });
+axios.interceptors.request.use(config => { requests.add(config); beginRequest(config); return config; });
 axios.interceptors.response.use(
-  response => { requests.delete(response.config); return response; },
+  response => { requests.delete(response.config); endRequest(response.config); return response; },
   error => {
     requests.delete(error.config);
+    endRequest(error.config, !axios.isCancel(error) && (!error.response || error.response.status >= 500));
     if (error.response?.status >= 500) reportDiagnostic("api", error.response.status, error.response.headers?.["x-request-id"]);
     return Promise.reject(error);
   },

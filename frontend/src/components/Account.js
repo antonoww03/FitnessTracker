@@ -14,6 +14,8 @@ import {
 } from "@/lib/offline";
 installOffline();
 export function Account({ children }) {
+  const [attempt, setAttempt] = useState(0);
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const [user, setUser] = useState(null),
     [loading, setLoading] = useState(true),
     [slowConnection, setSlowConnection] = useState(false),
@@ -34,27 +36,37 @@ export function Account({ children }) {
     if (data.recovery_code) setRecovery(data.recovery_code);
   }
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setSlowConnection(false);
+    setBootstrapFailed(false);
+    setError("");
     axios
       .get(`${API}/auth/me`)
       .then((r) => {
+        if (!active) return;
         accept(r.data);
         syncOffline();
       })
       .catch(async (e) => {
+        if (!active) return;
         // Browsers can briefly report navigator.onLine=true after the network
         // has disappeared. A request without an HTTP response is the reliable
         // signal that the saved offline account should be used.
         if (!e.response) {
           const cached = await cachedAccount();
+          if (!active) return;
           if (cached && storage.get(`offline-enabled:${cached.id}`) === "1") {
             accept(cached);
             return;
           }
         }
-        if (e.response?.status !== 401)
-          setError(errorMessage(e, "Could not connect. Reload to retry."));
+        if (e.response?.status !== 401) {
+          setBootstrapFailed(true);
+          setError(errorMessage(e, t("Could not sign in")));
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (active) setLoading(false); });
     const id = axios.interceptors.response.use(
       (r) => r,
       (e) => {
@@ -65,8 +77,8 @@ export function Account({ children }) {
         return Promise.reject(e);
       },
     );
-    return () => axios.interceptors.response.eject(id);
-  }, []);
+    return () => { active = false; axios.interceptors.response.eject(id); };
+  }, [attempt]);
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -87,6 +99,7 @@ export function Account({ children }) {
     }
   }
   if (loading) return <div className="ft-app ft-auth" role="status">{t(slowConnection ? "Connecting to the server. After inactivity, startup may take about a minute." : "Loading…")}</div>;
+  if (bootstrapFailed) return <div className="ft-app ft-auth"><section className="ft-card"><p role="alert">{error}</p><button className="ft-secondary" onClick={() => setAttempt(value => value + 1)}>{t("Retry")}</button></section></div>;
   if (recovery)
     return (
       <div className="ft-app ft-auth">
@@ -160,7 +173,7 @@ export function Account({ children }) {
           {error && <p role="alert">{error}</p>}
           <button className="ft-primary" disabled={busy}>
             {t(
-              mode === "register"
+              busy ? "Waiting for server…" : error ? "Retry" : mode === "register"
                 ? "Create account"
                 : mode === "reset"
                   ? "Reset password"
@@ -169,6 +182,7 @@ export function Account({ children }) {
           </button>
           <button
             type="button"
+            disabled={busy}
             className="ft-secondary"
             onClick={() => {
               setMode(mode === "login" ? "register" : "login");

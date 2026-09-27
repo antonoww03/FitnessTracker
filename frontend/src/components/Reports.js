@@ -1,3 +1,4 @@
+import { read, useDataRevision } from "@/lib/reads";
 import {t} from "@/lib/i18n";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
@@ -6,6 +7,7 @@ import { toast } from "sonner";
 import { API } from "@/lib/api";
 
 export const Reports = ({ selectedDate }) => {
+  const dataRevision = useDataRevision();
   const [reports, setReports] = useState([]);
   const [period, setPeriod] = useState("all");
   const [refresh, setRefresh] = useState(0);
@@ -15,12 +17,12 @@ export const Reports = ({ selectedDate }) => {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(false);
-    axios.get(`${API}/reports`, { params: { period, date: selectedDate }, signal: controller.signal })
+    read(`${API}/reports`, { params: { period, date: selectedDate }, signal: controller.signal })
       .then(({ data }) => { if (!controller.signal.aborted) setReports(data); })
       .catch(() => { if (!controller.signal.aborted) setError(true); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [period, selectedDate, refresh]);
+  }, [period, selectedDate, refresh, dataRevision]);
   const download = async (format) => {
     if (busy) return;
     setBusy(true);

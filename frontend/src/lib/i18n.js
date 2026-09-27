@@ -1,4 +1,15 @@
 export const dictionary = {
+  "Connection interrupted. Your input is still here. Check History before submitting again if a save may have reached the server.": "Връзката прекъсна. Въведеното остава във формата. Ако си записвал данни, провери Историята, преди да ги изпратиш отново.",
+  "The server is temporarily unavailable. Your input is still here. Try again shortly.": "Сървърът временно е недостъпен. Въведеното остава във формата. Опитай отново след малко.",
+  "You are offline. Keep this page open to preserve your input.": "Няма интернет връзка. Остави страницата отворена, за да запазиш въведеното.",
+  "Checking connection\u2026": "Проверка на връзката…",
+  "The server is taking longer than usual. Startup may take about a minute. Keep this page open.": "Сървърът отговаря по-бавно. Стартирането може да отнеме около минута. Остави страницата отворена.",
+  "Connection interrupted. Your form has not been reloaded.": "Връзката прекъсна. Формата не е презаредена.",
+  "Connection restored. Retry the failed action in its form; pending offline changes sync separately.": "Връзката е възстановена. Опитай неуспешното действие от формата; офлайн промените се синхронизират отделно.",
+  "This checks the connection only; it does not submit your data again.": "Проверява само връзката, без да изпраща данните повторно.",
+  "Connection status": "Състояние на връзката",
+  "Waiting for server\u2026": "Изчакване на сървъра…",
+
   Today: "Днес",
   History: "История",
   Reports: "Отчети",
@@ -519,3 +530,17 @@ Object.assign(dictionary, {
 Object.assign(dictionary, {
   "Connecting to the server. After inactivity, startup may take about a minute.": "Свързване със сървъра. След неактивност стартирането може да отнеме около минута.",
 });
+
+Object.assign(dictionary, {
+  "Change queued for sync": "Промяната е запазена за синхронизация",
+  "Pending deletion": "Изчаква изтриване",
+  "Pending edit": "Изчаква редакция",
+  "Open History online once before editing offline.": "Отвори История с интернет, преди да редактираш offline.",
+  "Entry changed or deleted. Review the latest version before retrying.": "Записът е променен или изтрит. Прегледай актуалната версия, преди да опиташ отново.",
+  "Edit or delete cached entries in History. Conflicts stay pending: discard the queued change, refresh History online and apply it again.": "Редактирай или изтривай запазени записи от История. При конфликт откажи чакащата промяна, обнови История с интернет и я приложи отново.",
+  "Something went wrong": "Възникна грешка",
+  "Reload to continue. Unsaved changes may be lost.": "Презареди, за да продължиш. Незапазените промени може да бъдат загубени.",
+  "Reload": "Презареди"
+});
+
+Object.assign(dictionary, {"Discard queued change":"Откажи чакащата промяна"});

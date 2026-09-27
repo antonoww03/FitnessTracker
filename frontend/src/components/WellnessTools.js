@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -126,6 +126,7 @@ function RecipeEditor({ recipe, onSaved, onCancel }) {
           <button
             type="button"
             className="ft-danger-text"
+            disabled={busy || syncStatus().working}
             onClick={() =>
               setValue({
                 ...value,
@@ -563,6 +564,7 @@ export function OfflinePanel({ selectedDate }) {
                         axios.get(`${API}/${path}`, { params: { date } }),
                     ),
                   ),
+                  axios.get(`${API}/history`, {params: {start: format(subDays(new Date(selectedDate + "T12:00:00"), 29), "yyyy-MM-dd"), end: selectedDate, kind: "all"}}),
                   axios.get(`${API}/preferences`),
                   axios.get(`${API}/programs`),
                 ]);
@@ -586,6 +588,7 @@ export function OfflinePanel({ selectedDate }) {
           "Keeps a local copy on this device. Offline food, water, weight and training entries sync when online. Sign out clears local cached data.",
         )}
       </p>
+      <p className="ft-muted">{t("Edit or delete cached entries in History. Conflicts stay pending: discard the queued change, refresh History online and apply it again.")}</p>
       {syncErrors.map((message, i) => (
         <p role="alert" key={i}>
           {t(message)}
@@ -597,19 +600,21 @@ export function OfflinePanel({ selectedDate }) {
       {items.map((item) => (
         <div key={item.key} className="ft-history-row">
           <div>
-            {item.config.data.date} ·{" "}
-            {item.config.data.food_name ||
-              item.config.data.training_type ||
+            {item.config.data?.date || item.entry?.date} ·{" "}
+            {item.config.data?.food_name ||
+              item.config.data?.training_type ||
               item.config.url.split("/").pop()}
+            {item.entry && <p>{t(item.config.method === "delete" ? "Pending deletion" : "Pending edit")}</p>}
             {item.error && <p role="alert">{t(item.error)}</p>}
           </div>
           <button
             className="ft-danger-text"
+            disabled={busy || syncStatus().working}
             onClick={() => {
-              if (window.confirm(t("Delete") + "?")) discardQueued(item.key);
+              if (window.confirm(t("Discard queued change") + "?")) discardQueued(item.key);
             }}
           >
-            {t("Delete")}
+            {t("Discard queued change")}
           </button>
         </div>
       ))}

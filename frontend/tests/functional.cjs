@@ -100,9 +100,9 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
     // Force an API failure to verify explicit error state and Retry recovery.
     await page.route('**/api/summary?*', route => route.fulfill({ status: 500, body: '{}' }));
     await page.getByTestId('next-day-button').click();
-    await page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
+    await page.getByTestId('app-root').getByRole('button', { name: 'Retry', exact: true }).waitFor();
     await page.unroute('**/api/summary?*');
-    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await page.getByTestId('app-root').getByRole('button', { name: 'Retry', exact: true }).click();
     await page.getByTestId('macros-dashboard').waitFor();
     for (const width of [390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });

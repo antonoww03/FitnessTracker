@@ -1,3 +1,4 @@
+import { read, useDataRevision } from "@/lib/reads";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import "@/App.css";
 import axios from "axios";
@@ -94,9 +95,9 @@ function AppContent({ user, onLogout, onSignedOut }) {
     setPreferences(data);
   };
   useEffect(() => {
-    axios
-      .get(`${API}/preferences`)
-      .then((r) => applyPreferences(r.data))
+    const controller = new AbortController();
+    read(`${API}/preferences`, {signal: controller.signal})
+      .then((r) => { if (!controller.signal.aborted) applyPreferences(r.data); })
       .catch(() => {});
     const guard = (e) => {
       if (dirty.current || hasDrafts()) {
@@ -107,6 +108,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
     window.addEventListener("beforeunload", guard);
     window.addEventListener("fittrack-before-update", guard);
     return () => {
+      controller.abort();
       window.removeEventListener("beforeunload", guard);
       window.removeEventListener("fittrack-before-update", guard);
     };
@@ -129,22 +131,27 @@ function AppContent({ user, onLogout, onSignedOut }) {
   const currentDate = useRef(selectedDate);
   currentDate.current = selectedDate;
   const requestId = useRef(0);
+  const activeRequest = useRef(null);
+  const dataRevision = useDataRevision();
   const [loading, setLoading] = useState(true);
   const [loadedDate, setLoadedDate] = useState(null);
   const [loadError, setLoadError] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (selectedDate !== currentDate.current) return;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
     const id = ++requestId.current;
     setLoading(true);
     setLoadError(false);
     try {
       const [summaryRes, foodsRes, trainingsRes, streakRes] = await Promise.all(
         [
-          axios.get(`${API}/summary?date=${selectedDate}`),
-          axios.get(`${API}/food?date=${selectedDate}`),
-          axios.get(`${API}/training?date=${selectedDate}`),
-          axios.get(`${API}/streak/water?date=${selectedDate}`),
+          read(`${API}/summary?date=${selectedDate}`, { signal: controller.signal }),
+          read(`${API}/food?date=${selectedDate}`, { signal: controller.signal }),
+          read(`${API}/training?date=${selectedDate}`, { signal: controller.signal }),
+          read(`${API}/streak/water?date=${selectedDate}`, { signal: controller.signal }),
         ],
       );
       if (id !== requestId.current || selectedDate !== currentDate.current)
@@ -159,7 +166,7 @@ function AppContent({ user, onLogout, onSignedOut }) {
       setTrainings(trainingsRes.data);
       setWaterStreak(streakRes.data.streak || 0);
     } catch (err) {
-      if (id === requestId.current && selectedDate === currentDate.current)
+      if (!axios.isCancel(err) && id === requestId.current && selectedDate === currentDate.current)
         setLoadError(true);
     } finally {
       if (id === requestId.current && selectedDate === currentDate.current)
@@ -169,11 +176,11 @@ function AppContent({ user, onLogout, onSignedOut }) {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    return () => { activeRequest.current?.abort(); requestId.current++; };
+  }, [fetchData, dataRevision]);
 
   useEffect(() => {
     const synced = () => {
-      fetchData();
       setPlanRevision((v) => v + 1);
     };
     window.addEventListener("fittrack-synced", synced);

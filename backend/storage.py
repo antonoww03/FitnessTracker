@@ -3,6 +3,9 @@ from contextlib import contextmanager
 import os
 import sqlite3
 import threading
+import time
+import hashlib
+import logging
 import psycopg
 
 SCHEMA = (
@@ -19,6 +22,47 @@ SCHEMA = (
 INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg.IntegrityError)
 _initialized = set()
 _init_lock = threading.Lock()
+# Per process cap, including callers waiting for PostgreSQL connection startup.
+_pg_slots = threading.BoundedSemaphore(int(os.getenv('FITTRACK_DB_MAX_CONNECTIONS', '4')))
+_cleanup_lock = threading.Lock()
+_last_cleanup = {}
+
+
+class DatabaseBusy(Exception):
+    pass
+
+
+@contextmanager
+def postgres_slot():
+    if not _pg_slots.acquire(timeout=2):
+        raise DatabaseBusy('Database capacity temporarily exhausted')
+    try:
+        yield
+    finally:
+        _pg_slots.release()
+
+
+def cleanup(connection, key, postgres=False):
+    now = time.time()
+    if now - _last_cleanup.get(key, 0) < 3600 or not _cleanup_lock.acquire(blocking=False):
+        return
+    try:
+        if now - _last_cleanup.get(key, 0) < 3600:
+            return
+        # Bounded batches; never expire idempotency receipts or queued writes.
+        for table, identifier, column, cutoff in (
+            ('sessions', 'token', 'expires', now),
+            ('attempts', 'key', 'until', now - 86400),
+        ):
+            connection.execute(f'DELETE FROM {table} WHERE {identifier} IN (SELECT {identifier} FROM {table} WHERE {column}<? ORDER BY {column} LIMIT 500)', (cutoff,))
+        connection.execute('DELETE FROM push_deliveries WHERE (subscription_id,slot) IN (SELECT subscription_id,slot FROM push_deliveries WHERE created<? ORDER BY created LIMIT 500)', (now-30*86400,))
+        expiration = "CAST(CAST(payload AS jsonb)->>'expires' AS DOUBLE PRECISION)" if postgres else "json_extract(payload, '$.expires')"
+        connection.execute(f"DELETE FROM records WHERE (kind,id) IN (SELECT kind,id FROM records WHERE kind LIKE '%:trash' AND {expiration}<? LIMIT 500)", (now,))
+        _last_cleanup[key] = now
+        return True
+    finally:
+        _cleanup_lock.release()
+
 
 
 
@@ -96,7 +140,14 @@ class PostgresConnection:
             # Serialize idempotent writes across processes before checking their
             # operation IDs. Transaction-scoped locks also work with poolers.
             return self.connection.execute('SELECT pg_advisory_xact_lock(71942001)')
-        return self.connection.execute(self.query(query, parameters is not None), parameters)
+        started = time.perf_counter()
+        try:
+            return self.connection.execute(self.query(query, parameters is not None), parameters)
+        finally:
+            elapsed = time.perf_counter() - started
+            if elapsed >= 0.25:
+                # Fingerprints only: SQL text, bound values and DATABASE_URL stay private.
+                logging.getLogger('uvicorn.error').warning('slow_sql fingerprint=%s duration_ms=%d', hashlib.sha256(query.encode()).hexdigest()[:16], elapsed * 1000)
 
     def executemany(self, query, parameters):
         cursor = self.connection.cursor()
@@ -119,6 +170,7 @@ def connect(sqlite_path):
                 for statement in SCHEMA:
                     connection.execute(statement)
                 migrate(connection)
+                cleanup(connection, str(sqlite_path))
             with connection:
                 yield connection
         finally:
@@ -128,7 +180,9 @@ def connect(sqlite_path):
     options = psycopg.conninfo.conninfo_to_dict(url)
     options.setdefault('sslmode', 'require')
     options['connect_timeout'] = 10
-    with psycopg.connect(**options, prepare_threshold=None) as connection:
+    with postgres_slot(), psycopg.connect(**options, prepare_threshold=None) as connection:
+        connection.execute("SET LOCAL statement_timeout = '15s'")
+        connection.execute("SET LOCAL lock_timeout = '5s'")
         if url not in _initialized:
             with _init_lock:
                 if url not in _initialized:
@@ -145,4 +199,13 @@ def connect(sqlite_path):
                     _initialized.add(url)
         connection.execute('SET LOCAL search_path TO fittrack')
         connection.execute("SET LOCAL statement_timeout = '15s'")
-        yield PostgresConnection(connection)
+        connection.execute("SET LOCAL lock_timeout = '5s'")
+        connection.execute("SET LOCAL idle_in_transaction_session_timeout = '30s'")
+        adapter = PostgresConnection(connection)
+        if cleanup(adapter, url, postgres=True):
+            connection.commit()
+            connection.execute('SET LOCAL search_path TO fittrack')
+            connection.execute("SET LOCAL statement_timeout = '15s'")
+            connection.execute("SET LOCAL lock_timeout = '5s'")
+            connection.execute("SET LOCAL idle_in_transaction_session_timeout = '30s'")
+        yield adapter

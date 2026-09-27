@@ -1,4 +1,15 @@
 export const dictionary = {
+  "Connection interrupted. Your input is still here. Check History before submitting again if a save may have reached the server.": "Връзката прекъсна. Въведеното остава във формата. Ако си записвал данни, провери Историята, преди да ги изпратиш отново.",
+  "The server is temporarily unavailable. Your input is still here. Try again shortly.": "Сървърът временно е недостъпен. Въведеното остава във формата. Опитай отново след малко.",
+  "You are offline. Keep this page open to preserve your input.": "Няма интернет връзка. Остави страницата отворена, за да запазиш въведеното.",
+  "Checking connection\u2026": "Проверка на връзката…",
+  "The server is taking longer than usual. Startup may take about a minute. Keep this page open.": "Сървърът отговаря по-бавно. Стартирането може да отнеме около минута. Остави страницата отворена.",
+  "Connection interrupted. Your form has not been reloaded.": "Връзката прекъсна. Формата не е презаредена.",
+  "Connection restored. Retry the failed action in its form; pending offline changes sync separately.": "Връзката е възстановена. Опитай неуспешното действие от формата; офлайн промените се синхронизират отделно.",
+  "This checks the connection only; it does not submit your data again.": "Проверява само връзката, без да изпраща данните повторно.",
+  "Connection status": "Състояние на връзката",
+  "Waiting for server\u2026": "Изчакване на сървъра…",
+
   Today: "Днес",
   History: "История",
   Reports: "Отчети",

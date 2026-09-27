@@ -81,6 +81,7 @@ jobs:
       - run: node frontend/tests/profile.cjs
       - run: node frontend/tests/updates.cjs
       - run: node frontend/tests/offline-edits.cjs
+      - run: node frontend/tests/connection.cjs
       - run: npm run test:mobile --prefix frontend
       - uses: actions/upload-artifact@v7
         if: always()

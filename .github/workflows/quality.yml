@@ -37,6 +37,7 @@ jobs:
       - run: node frontend/tests/service-worker.cjs
       - run: npm run build --prefix frontend
       - run: node frontend/tests/release.cjs
+      - run: node frontend/tests/performance.cjs
       - name: Build and smoke-test production image
         run: |
           docker build -t fittrack-ci .

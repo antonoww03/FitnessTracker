@@ -11,7 +11,7 @@ const entry = path.join(root, "tests", ".offline-entry.js");
 try {
   fs.writeFileSync(
     entry,
-    "import * as offline from '../src/lib/offline'; import * as diagnostics from '../src/lib/diagnostics'; import axios from 'axios'; window.testing={...offline,...diagnostics,axios};",
+    "import * as offline from '../src/lib/offline'; import * as diagnostics from '../src/lib/diagnostics'; import * as reads from '../src/lib/reads'; import axios from 'axios'; window.testing={...offline,...diagnostics,...reads,axios};",
   );
   execFileSync(
     "npx",
@@ -40,6 +40,37 @@ w.structuredClone = structuredClone;
 w.eval(fs.readFileSync(tmp + "/bundle.js", "utf8"));
 const api = w.testing;
 (async () => {
+  let calls = 0, settle;
+  api.axios.defaults.adapter = config => {
+    calls++;
+    return new Promise(resolve => { settle = () => resolve({data:{ok:true},status:200,headers:{},config}); });
+  };
+  const aborter = new w.AbortController();
+  const first = api.read('/api/test-shared', {signal:aborter.signal});
+  const cancelled = assert.rejects(first, error => api.axios.isCancel(error));
+  const second = api.read('/api/test-shared');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls,1,'Concurrent GETs share one transport');
+  aborter.abort(); settle();
+  await cancelled;
+  assert.equal((await second).data.ok,true,'One caller cannot cancel another');
+  const stale = api.read('/api/test-stale');
+  const rejected = assert.rejects(stale, error => api.axios.isCancel(error));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  api.invalidateReads(false); settle(); await rejected;
+  let transportSignal;
+  api.axios.defaults.adapter = config => {
+    transportSignal = config.signal;
+    return new Promise((resolve,reject) => config.signal.addEventListener('abort', () => reject(new api.axios.CanceledError())));
+  };
+  const lastCaller = new w.AbortController();
+  const abandoned = api.read('/api/test-abandoned', {signal:lastCaller.signal});
+  const abandonedError = assert.rejects(abandoned, error => api.axios.isCancel(error));
+  await new Promise(resolve => setTimeout(resolve,0));
+  lastCaller.abort(); await abandonedError;
+  await new Promise(resolve => setTimeout(resolve,10));
+  assert(transportSignal.aborted,'No consumers remain: abort underlying transport');
+  console.log('PASS: concurrent GET deduplication, independent cancellation, stale generation rejection');
   api.installOffline();
   api.setOfflineUser({ id: "alice", username: "alice" });
   const enabling = api.setOfflineEnabled(true);

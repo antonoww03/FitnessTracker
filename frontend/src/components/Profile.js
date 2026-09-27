@@ -1,3 +1,4 @@
+import { read } from "@/lib/reads";
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Camera, ImagePlus, Trash2, UserRound } from "lucide-react";
@@ -61,10 +62,10 @@ export function Profile({ user }) {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError("");
-    axios
-      .get(`${API}/profile`)
+    read(`${API}/profile`, {signal: controller.signal})
       .then(({ data }) => {
         if (!active) return;
         const normalized = {
@@ -80,7 +81,7 @@ export function Profile({ user }) {
       })
       .catch((e) => { if (active) setError(errorMessage(e, t("Could not load profile."))); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [attempt]);
 
   const update = (key, value) => setProfile((current) => ({ ...current, [key]: value }));

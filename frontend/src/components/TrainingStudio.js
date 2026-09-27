@@ -1,3 +1,4 @@
+import { read, useDataRevision } from "@/lib/reads";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -172,6 +173,7 @@ export function TrainingStudio({
   onRefresh,
   onPlanChange,
 }) {
+  const dataRevision = useDataRevision();
   const key = `fittrack-workout:${user.id}`;
   const [programs, setPrograms] = useState([]),
     [adding, setAdding] = useState(false),
@@ -197,9 +199,10 @@ export function TrainingStudio({
     [revision, setRevision] = useState(0);
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
     Promise.all([
-      axios.get(`${API}/programs`),
-      axios.get(`${API}/personal-records`),
+      read(`${API}/programs`, {signal: controller.signal}),
+      read(`${API}/personal-records`, {signal: controller.signal}),
     ])
       .then(([a, b]) => {
         if (alive) {
@@ -213,8 +216,9 @@ export function TrainingStudio({
       });
     return () => {
       alive = false;
+      controller.abort();
     };
-  }, [revision]);
+  }, [revision, dataRevision]);
   useEffect(() => {
     setLocalSaved(storage.set(key, JSON.stringify(active)));
   }, [active, key]);
@@ -678,15 +682,17 @@ export function TrainingStudio({
   );
 }
 export function DayPlanCard({ selectedDate, onChange, onOpenTraining }) {
+  const dataRevision = useDataRevision();
   const [plan, setPlan] = useState(null),
     [programs, setPrograms] = useState([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
     Promise.all([
-      axios.get(`${API}/plan`, { params: { date: selectedDate } }),
-      axios.get(`${API}/programs`),
+      read(`${API}/plan`, { params: { date: selectedDate }, signal: controller.signal }),
+      read(`${API}/programs`, {signal: controller.signal}),
     ])
       .then(([a, b]) => {
         if (alive) {
@@ -699,8 +705,9 @@ export function DayPlanCard({ selectedDate, onChange, onOpenTraining }) {
       });
     return () => {
       alive = false;
+      controller.abort();
     };
-  }, [selectedDate]);
+  }, [selectedDate, dataRevision]);
   async function update(day_type, program_id = null) {
     setBusy(true);
     try {

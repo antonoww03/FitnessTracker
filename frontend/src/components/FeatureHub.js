@@ -1,3 +1,4 @@
+import { read, useDataRevision } from "@/lib/reads";
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -306,6 +307,7 @@ export function EntryEditor({ entry, onClose, onSave }) {
   );
 }
 export function HistoryView({ selectedDate, onRefresh }) {
+  const dataRevision = useDataRevision();
   const [start, setStart] = useState(dateBefore(selectedDate, 29)),
     [end, setEnd] = useState(selectedDate),
     [kind, setKind] = useState("all"),
@@ -323,9 +325,8 @@ export function HistoryView({ selectedDate, onRefresh }) {
     const c = new AbortController();
     setLoading(true);
     setError("");
-    axios
-      .get(`${API}/history`, { params: { start, end, kind }, signal: c.signal })
-      .then((r) => setRows(r.data))
+    read(`${API}/history`, { params: { start, end, kind }, signal: c.signal })
+      .then((r) => { if (!c.signal.aborted) setRows(r.data); })
       .catch((e) => {
         if (!c.signal.aborted)
           setError(errorMessage(e, t("Could not complete action")));
@@ -334,7 +335,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [start, end, kind, revision]);
+  }, [start, end, kind, revision, dataRevision]);
   useEffect(() => {
     const synced = () => setRevision(x => x + 1);
     window.addEventListener("fittrack-synced", synced);
@@ -784,6 +785,7 @@ export function Chart({ rows, value, title, unit }) {
   );
 }
 export function ProgressView({ selectedDate }) {
+  const dataRevision = useDataRevision();
   const [days, setDays] = useState(30),
     [rows, setRows] = useState([]),
     [error, setError] = useState(""),
@@ -792,15 +794,14 @@ export function ProgressView({ selectedDate }) {
     const c = new AbortController();
     setLoading(true);
     setError("");
-    axios
-      .get(`${API}/progress`, {
+    read(`${API}/progress`, {
         params: {
           start: dateBefore(selectedDate, days - 1),
           end: selectedDate,
         },
         signal: c.signal,
       })
-      .then((r) => setRows(r.data))
+      .then((r) => { if (!c.signal.aborted) setRows(r.data); })
       .catch((e) => {
         if (!c.signal.aborted)
           setError(errorMessage(e, t("Could not complete action")));
@@ -809,7 +810,7 @@ export function ProgressView({ selectedDate }) {
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [days, selectedDate]);
+  }, [days, selectedDate, dataRevision]);
   return (
     <div className="ft-content">
       <div className="ft-row">

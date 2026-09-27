@@ -8,6 +8,7 @@ import uuid
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from backend.storage import DatabaseBusy
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter()
@@ -43,6 +44,8 @@ async def diagnostic_requests(request: Request, call_next):
     request_id = uuid.uuid4().hex
     try:
         response = await call_next(request)
+    except DatabaseBusy:
+        response = JSONResponse({'detail':'Server busy. Try again shortly.'}, status_code=503, headers={'Retry-After':'2'})
     except Exception:
         # Do not log exception text/locals: database exceptions can contain values.
         response = JSONResponse({'detail':'Unexpected server error', 'request_id':request_id}, status_code=500)

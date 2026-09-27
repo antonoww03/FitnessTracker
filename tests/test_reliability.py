@@ -70,11 +70,11 @@ def test_legacy_sqlite_migration_preserves_credentials(tmp_path, monkeypatch):
         for statement in storage.SCHEMA:
             db.execute(statement)
         db.execute("INSERT INTO users VALUES ('owner','legacy','salt','hash')")
-        db.execute("INSERT INTO sessions VALUES ('token','owner',12345)")
+        db.execute("INSERT INTO sessions VALUES ('token','owner',9999999999)")
         db.execute("INSERT INTO recovery VALUES ('owner','code')")
     for _ in range(2):
         with storage.connect(path) as db:
-            assert db.execute('SELECT * FROM sessions').fetchall() == [('token', 'owner', 12345)]
+            assert db.execute('SELECT * FROM sessions').fetchall() == [('token', 'owner', 9999999999)]
             assert db.execute('SELECT * FROM recovery').fetchall() == [('owner', 'code')]
             assert db.execute('SELECT version FROM schema_migrations').fetchall() == [(1,)]
     with storage.connect(path) as db:

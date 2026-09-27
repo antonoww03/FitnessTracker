@@ -1,4 +1,5 @@
 import axios from "axios";
+import { invalidateReads } from "./reads";
 import { t } from "./i18n";
 import { beginRequest, endRequest } from "./connection";
 import { reportDiagnostic } from "./diagnostics";
@@ -22,7 +23,9 @@ const requests = new Set();
 export const pendingRequests = () => requests.size > 0;
 axios.interceptors.request.use(config => { requests.add(config); beginRequest(config); return config; });
 axios.interceptors.response.use(
-  response => { requests.delete(response.config); endRequest(response.config); return response; },
+  response => { requests.delete(response.config); endRequest(response.config);
+    if (!["get", "head", "options"].includes(response.config.method) && !response.config.url.includes("/auth/")) invalidateReads();
+    return response; },
   error => {
     requests.delete(error.config);
     endRequest(error.config, !axios.isCancel(error) && (!error.response || error.response.status >= 500));

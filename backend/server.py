@@ -136,6 +136,11 @@ def scoped(kind):
 
 
 
+@app.exception_handler(storage.DatabaseBusy)
+async def database_busy(request, exception):
+    return JSONResponse({'detail': 'Server busy. Try again shortly.'}, status_code=503, headers={'Retry-After': '2'})
+
+
 def database():
     return storage.connect(DB_PATH)
 
@@ -1111,7 +1116,16 @@ def edit_entry(kind: KINDS, identifier: str, body: dict, request: Request):
 def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'water', 'weight'] = 'all'):
     if end < start or (end-start).days > 366:
         raise HTTPException(422, 'Choose a range of up to 367 days')
-    return sorted([{**r, 'kind': k, '_revision': entry_revision(r)} for k in MODELS if kind in ('all', k) for r in records(k) if str(start) <= r['date'] <= str(end)], key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
+    result = []
+    with database() as db:
+        for k in MODELS:
+            if kind not in ('all', k):
+                continue
+            rows = db.execute('SELECT payload FROM records WHERE kind=? AND date>=? AND date<=? ORDER BY date DESC', (scoped(k), str(start), str(end)))
+            for row in rows:
+                value = json.loads(row[0])
+                result.append({**value, 'kind': k, '_revision': entry_revision(value)})
+    return sorted(result, key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
 
 
 @api_router.delete('/entries/{kind}/{identifier}')

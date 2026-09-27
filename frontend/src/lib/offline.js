@@ -1,3 +1,4 @@
+import { invalidateReads, isReadCurrent } from "./reads";
 import axios from "axios";
 import { storage } from "./i18n";
 let user = null,
@@ -46,7 +47,24 @@ async function transaction(action) {
     storageOperations--;
   }
 }
-const put = (key, value) => transaction((s) => s.put({ key, value }));
+let lastCacheCleanup = 0;
+const put = (key, value) => transaction((s) => {
+  const request = s.put({key, value, storedAt: Date.now()});
+  if (key.includes(":cache:") && Date.now() - lastCacheCleanup > 60000) {
+    const all = s.getAll();
+    all.onsuccess = () => {
+      const rows = all.result;
+      const queuedOwners = new Set(rows.filter(row => row.key.includes(":queue:")).map(row => row.key.split(":")[0]));
+      const caches = rows.filter(row => row.key.includes(":cache:") && !queuedOwners.has(row.key.split(":")[0]))
+        .sort((a,b) => (b.storedAt || 0) - (a.storedAt || 0));
+      caches.forEach((row,index) => {
+        if (index >= 250 || (row.storedAt || 0) < Date.now() - 30*86400000) s.delete(row.key);
+      });
+      lastCacheCleanup = Date.now();
+    };
+  }
+  return request;
+});
 const get = async (key) => (await transaction((s) => s.get(key)))?.value;
 const remove = (key) => transaction((s) => s.delete(key));
 const enabled = () =>
@@ -66,7 +84,7 @@ export async function setOfflineEnabled(value) {
   offlineChanged();
 }
 export function setOfflineUser(value) {
-  if (user?.id !== value?.id) failures.clear();
+  if (user?.id !== value?.id) { failures.clear(); invalidateReads(false); }
   user = value;
   if (enabled()) put("account", value).catch(() => {});
   offlineChanged();
@@ -235,6 +253,7 @@ export function installOffline() {
   axios.interceptors.response.use(
     async (response) => {
       const config = response.config;
+      if (!isReadCurrent(config)) throw new axios.CanceledError();
       if (
         config.offlineOwner === user?.id &&
         user &&

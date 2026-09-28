@@ -123,6 +123,23 @@ jobs:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           FITTRACK_RESTORE_TEST_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test_restore?sslmode=disable
         run: |
+          python - <<'PYSEED'
+          import os, json, psycopg
+          from tools.postgres_restore_drill import local_options
+          url = os.environ['FITTRACK_TEST_POSTGRES_URL']
+          local_options(url)
+          with psycopg.connect(url) as db:
+              db.execute('SET LOCAL search_path TO fittrack')
+              db.execute("INSERT INTO users VALUES ('restore-drill','restore-drill','synthetic-salt','synthetic-hash')")
+              for kind, payload in [('water', {'date':'2026-09-28','amount_ml':250}), ('profile', {'first_name':'Synthetic','last_name':'Restore'})]:
+                  db.execute('INSERT INTO records(kind,id,date,payload) VALUES (%s,%s,%s,%s)', ('restore-drill:'+kind,'drill',payload.get('date',''),json.dumps(payload)))
+              db.execute("INSERT INTO sessions VALUES ('drill-session','restore-drill',9999999999)")
+              db.execute("INSERT INTO recovery VALUES ('restore-drill','synthetic-code-hash')")
+              db.execute("INSERT INTO operations VALUES ('restore-drill','drill-operation','synthetic-digest','{}')")
+              db.execute("INSERT INTO attempts VALUES ('drill-attempt',1,9999999999)")
+              db.execute("INSERT INTO push_deliveries VALUES ('drill-subscription','drill-slot',1)")
+              db.execute("INSERT INTO app_settings VALUES ('drill-setting','synthetic-value')")
+          PYSEED
           docker exec "$POSTGRES_CONTAINER" pg_dump -U postgres -d fittrack_test --schema=fittrack --format=custom --no-owner --no-acl -f /tmp/fittrack-drill.dump
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres fittrack_test_restore
           docker exec "$POSTGRES_CONTAINER" pg_restore -U postgres -d fittrack_test_restore --single-transaction --exit-on-error --no-owner --no-acl /tmp/fittrack-drill.dump

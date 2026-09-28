@@ -74,6 +74,20 @@ if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Erro
     await page.waitForFunction(() => window.cameraTracks.some(t=>t.readyState==='live'));
     await page.getByRole('button',{name:'Close camera',exact:true}).click();
     assert(await page.evaluate(() => window.cameraTracks.every(t=>t.readyState==='ended')));
+    // A second device wins first; stale UI must retain its draft and send If-Match.
+    const latest = await (await context.request.get(base+'/api/profile')).json();
+    assert((await context.request.put(base+'/api/profile', {
+      headers:{'X-Requested-With':'FitTrack'}, data:{...latest,first_name:'Other device'},
+    })).ok());
+    await page.getByLabel('First name',{exact:true}).fill('Local draft');
+    const conflict = page.waitForResponse(r=>r.url().endsWith('/api/profile') && r.request().method()==='PUT');
+    await page.getByRole('button',{name:'Save profile',exact:true}).click();
+    const rejected = await conflict;
+    assert.equal(rejected.status(),409);
+    assert(rejected.request().headers()['if-match']);
+    assert.equal(await page.getByLabel('First name',{exact:true}).inputValue(),'Local draft');
+    assert.equal((await (await context.request.get(base+'/api/profile')).json()).first_name,'Other device');
+    await page.getByLabel('First name',{exact:true}).fill('Alex'); // Discard the local draft.
     // Account deletion must work without native browser confirm dialogs and
     // without filling the unrelated change-password fields.
     await page.getByTestId('tool-settings').click();

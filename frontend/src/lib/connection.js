@@ -4,7 +4,9 @@ const listeners = new Set();
 let failed = false;
 let snapshot = { slow: false, failed: false, pending: 0 };
 const publish = () => {
-  snapshot = { slow: [...pending.values()].some(item => item.slow), failed, pending: pending.size };
+  const next = { slow: [...pending.values()].some(item => item.slow), failed, pending: pending.size };
+  if (next.slow === snapshot.slow && next.failed === snapshot.failed && next.pending === snapshot.pending) return;
+  snapshot = next;
   listeners.forEach(listener => listener());
 };
 export const connectionSnapshot = () => snapshot;

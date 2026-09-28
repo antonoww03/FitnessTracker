@@ -273,6 +273,8 @@ def delete_account(body: AccountDeletion,request: Request,response: Response):
         db.execute('DELETE FROM operations WHERE owner=?',(owner,))
         recovery_schema(db)
         db.execute('DELETE FROM recovery WHERE user_id=?',(owner,))
+        db.execute('DELETE FROM attempts WHERE key IN (?,?)', ('diagnostics:'+owner, 'user:'+owner))
+        db.execute('DELETE FROM attempts WHERE substr(key,1,?)=?', (len('resource:'+owner+':'), 'resource:'+owner+':'))
         db.execute('DELETE FROM users WHERE id=?',(owner,))
     response.delete_cookie('fittrack_session',path='/api')
     return {'ok':True}

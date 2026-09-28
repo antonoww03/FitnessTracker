@@ -461,7 +461,7 @@ export function AccountSecurity({ user, onSignedOut }) {
           ...(kind === "change-password" ? { new_password: next } : {}),
         });
       await clearOffline(user.id);
-      storage.set(`fittrack-workout:${user.id}`, "null");
+      storage.remove(`fittrack-workout:${user.id}`);
       setOfflineUser(null);
       onSignedOut();
     } catch (e) {

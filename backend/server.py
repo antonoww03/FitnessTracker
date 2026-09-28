@@ -26,7 +26,7 @@ from contextvars import ContextVar
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -706,9 +706,10 @@ def auth_attempt(request, username):
     keys = [f"ip:{request.client.host if request.client else 'unknown'}", f'user:{username}']
     blocked = False
     with database() as db:
-        db.execute('DELETE FROM attempts WHERE until<?', (time.time(),))
+        now = time.time()
+        db.execute('DELETE FROM attempts WHERE key IN (SELECT key FROM attempts WHERE until<? ORDER BY until LIMIT 500)', (now,))
         for key in keys:
-            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=attempts.count+1', (key, time.time()+900))
+            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN attempts.until<? THEN 1 ELSE attempts.count+1 END, until=CASE WHEN attempts.until<? THEN excluded.until ELSE attempts.until END', (key, now+900, now, now))
             blocked |= db.execute('SELECT count FROM attempts WHERE key=?', (key,)).fetchone()[0] > 20
     if blocked:
         raise HTTPException(429, 'Too many sign-in attempts. Try again in 15 minutes.')
@@ -809,16 +810,35 @@ class Profile(Model):
         return value
 
 
+def profile_value(row):
+    value = json.loads(row[0]) if row else {}
+    return Profile.model_validate({k: value[k] for k in Profile.model_fields if k in value}).model_dump()
+
+
 @api_router.get('/profile')
-def get_profile():
-    rows = records('profile')
-    return Profile.model_validate({k: rows[0][k] for k in Profile.model_fields if k in rows[0]}).model_dump() if rows else Profile().model_dump()
+def get_profile(response: Response):
+    with database() as db:
+        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped('profile'), 'profile')).fetchone()
+    value = profile_value(row)
+    response.headers['ETag'] = '"' + entry_revision(value) + '"'
+    return value
 
 
 @api_router.put('/profile')
-def update_profile(body: Profile):
-    save('profile', body.model_dump(), 'profile')
-    return body
+def update_profile(body: Profile, request: Request, response: Response):
+    expected = request.headers.get('if-match')
+    if expected and not re.fullmatch(r'"[a-f0-9]{64}"', expected):
+        raise HTTPException(422, 'Invalid profile revision')
+    value = body.model_dump()
+    with database() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT payload FROM records WHERE kind=? AND id=?', (scoped('profile'), 'profile')).fetchone()
+        if expected and expected != '"' + entry_revision(profile_value(row)) + '"':
+            raise HTTPException(409, 'Profile changed on another device. Your input is preserved; reload the profile before retrying.')
+        record = {**value, 'id':'profile', 'timestamp':datetime.now(timezone.utc).isoformat()}
+        db.execute('INSERT INTO records(kind,id,date,payload) VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload', (scoped('profile'), 'profile', '', json.dumps(record)))
+    response.headers['ETag'] = '"' + entry_revision(value) + '"'
+    return value
 
 
 class PushKeys(Model):
@@ -1126,9 +1146,16 @@ def edit_entry(kind: KINDS, identifier: str, body: dict, request: Request):
 
 
 @api_router.get('/history')
-def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'water', 'weight'] = 'all'):
+def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'water', 'weight'] = 'all', limit: Annotated[int | None, Query(ge=1, le=500)] = None, offset: Annotated[int, Query(ge=0, le=100000)] = 0):
     if end < start or (end-start).days > 366:
         raise HTTPException(422, 'Choose a range of up to 367 days')
+    if limit is not None:
+        kinds = {scoped(k):k for k in MODELS if kind in ('all', k)}
+        placeholders = ','.join('?' for _ in kinds)
+        timestamp = "CAST(payload AS jsonb)->>'timestamp'" if storage.postgres_enabled() else "json_extract(payload, '$.timestamp')"
+        with database() as db:
+            rows = db.execute(f"SELECT kind,payload FROM records WHERE kind IN ({placeholders}) AND date>=? AND date<=? ORDER BY date DESC,COALESCE({timestamp},'') DESC,kind,id LIMIT ? OFFSET ?", [*kinds,str(start),str(end),limit,offset]).fetchall()
+        return [{**(value := json.loads(raw)), 'kind':kinds[k], '_revision':entry_revision(value)} for k,raw in rows]
     result = []
     with database() as db:
         for k in MODELS:
@@ -1237,7 +1264,16 @@ def progress(start: Date, end: Date):
 
 @api_router.get('/backup')
 def backup():
-    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': {k: records(k) for k in (*MODELS, *ADVANCED_MODELS, 'goals', 'preferences', 'profile', 'meal', 'report')}}
+    kinds = (*MODELS, *ADVANCED_MODELS, 'goals', 'preferences', 'profile', 'meal', 'report')
+    names = {scoped(kind): kind for kind in kinds}
+    exported = {kind: [] for kind in kinds}
+    # One SELECT gives a consistent statement snapshot on both database engines.
+    with database() as db:
+        placeholders = ','.join('?' for _ in names)
+        rows = db.execute(f'SELECT kind,payload FROM records WHERE kind IN ({placeholders}) ORDER BY kind,id', list(names)).fetchall()
+    for kind, raw in rows:
+        exported[names[kind]].append(json.loads(raw))
+    data = {'version': 1, 'created_at': datetime.now(timezone.utc).isoformat(), 'records': exported}
     return Response(json.dumps(data), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="fittrack-backup.json"'})
 
 
@@ -1269,6 +1305,7 @@ async def restore(request: Request):
         raise HTTPException(422, 'Invalid backup; no data changed') from None
     # Merge by stable ID, never erase other entries; one transaction for the full file.
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
         db.executemany('INSERT INTO records (kind,id,date,payload) VALUES (?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET date=excluded.date,payload=excluded.payload', clean)
     return {'restored': len(clean)}
 

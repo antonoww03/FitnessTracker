@@ -100,7 +100,10 @@ export async function clearOffline(ownerId = user?.id) {
   const previous = ownerId ? { id: ownerId } : null;
   clearing = true;
   failures.clear();
-  if (previous) storage.set(`fittrack-updated:${previous.id}`, "");
+  if (previous) {
+    storage.set(`fittrack-updated:${previous.id}`, "");
+    storage.remove(`offline-enabled:${previous.id}`);
+  }
   try {
     const db = await openDB();
     try {
@@ -152,6 +155,20 @@ const urlFor = (config) => {
   url.searchParams.sort();
   return url.pathname + url.search;
 };
+async function cachedResponse(owner, config) {
+  const url = new URL(urlFor(config), location.origin);
+  const exact = await get(owner + ":cache:" + url.pathname + url.search);
+  if (exact !== undefined) return exact;
+  if (url.pathname !== "/api/history" || !url.searchParams.has("limit")) return undefined;
+  const limit = Number(url.searchParams.get("limit"));
+  const offset = Number(url.searchParams.get("offset") || 0);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500 || !Number.isInteger(offset) || offset < 0) return undefined;
+  url.searchParams.delete("limit");
+  url.searchParams.delete("offset");
+  // Preserve offline data prepared by older deployments and the offline setup screen.
+  const complete = await get(owner + ":cache:" + url.pathname + url.search);
+  return Array.isArray(complete) ? complete.slice(offset, offset + limit) : undefined;
+}
 const creatable = (config) =>
   config.method?.toLowerCase() === "post" &&
   /^\/(?:api\/)?(food|water|weight|training)$/.test(
@@ -341,7 +358,7 @@ export function installOffline() {
       }
       if (config.method === "get") {
         try {
-          const data = await get(user.id + ":cache:" + urlFor(config));
+          const data = await cachedResponse(user.id, config);
           if (data !== undefined && !clearing && config.offlineOwner === user?.id)
             return { data: await historyOverlay(config, data), status: 200, config, offline: true };
         } catch {}

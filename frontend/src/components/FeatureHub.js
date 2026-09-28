@@ -308,6 +308,7 @@ export function EntryEditor({ entry, onClose, onSave }) {
 }
 export function HistoryView({ selectedDate, onRefresh }) {
   const dataRevision = useDataRevision();
+  const [page, setPage] = useState(0);
   const [start, setStart] = useState(dateBefore(selectedDate, 29)),
     [end, setEnd] = useState(selectedDate),
     [kind, setKind] = useState("all"),
@@ -318,6 +319,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   useEffect(() => {
+    setPage(0);
     setStart(dateBefore(selectedDate, 29));
     setEnd(selectedDate);
   }, [selectedDate]);
@@ -325,7 +327,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
     const c = new AbortController();
     setLoading(true);
     setError("");
-    read(`${API}/history`, { params: { start, end, kind }, signal: c.signal })
+    read(`${API}/history`, { params: { start, end, kind, limit: 100, offset: page * 100 }, signal: c.signal })
       .then((r) => { if (!c.signal.aborted) setRows(r.data); })
       .catch((e) => {
         if (!c.signal.aborted)
@@ -335,12 +337,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [start, end, kind, revision, dataRevision]);
-  useEffect(() => {
-    const synced = () => setRevision(x => x + 1);
-    window.addEventListener("fittrack-synced", synced);
-    return () => window.removeEventListener("fittrack-synced", synced);
-  }, []);
+  }, [start, end, kind, revision, dataRevision, page]);
   function refresh() {
     setRevision((x) => x + 1);
     onRefresh();
@@ -396,7 +393,7 @@ export function HistoryView({ selectedDate, onRefresh }) {
               <input
                 type="date"
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={(e) => { setPage(0); setStart(e.target.value); }}
               />
             </label>
             <label>
@@ -404,12 +401,12 @@ export function HistoryView({ selectedDate, onRefresh }) {
               <input
                 type="date"
                 value={end}
-                onChange={(e) => setEnd(e.target.value)}
+                onChange={(e) => { setPage(0); setEnd(e.target.value); }}
               />
             </label>
             <label>
               {t("Type")}
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <select value={kind} onChange={(e) => { setPage(0); setKind(e.target.value); }}>
                 {["all", "food", "training", "water", "weight"].map((k) => (
                   <option value={k} key={k}>
                     {t(k === "all" ? "All" : k[0].toUpperCase() + k.slice(1))}
@@ -492,6 +489,11 @@ export function HistoryView({ selectedDate, onRefresh }) {
           ) : (
             <p>{t("No entries")}</p>
           )}
+          <div className="ft-row" aria-label={t("History pages")}>
+            <button className="ft-secondary" disabled={loading || busy || page === 0} onClick={() => setPage(p => p - 1)}>{t("Previous")}</button>
+            <span>{t("Page")} {page + 1}</span>
+            <button className="ft-secondary" disabled={loading || busy || !!error || rows.length < 100} onClick={() => setPage(p => p + 1)}>{t("Next")}</button>
+          </div>
         </>
       )}
     </section>

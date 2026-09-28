@@ -56,6 +56,7 @@ export function Profile({ user }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState("");
   const galleryRef = useRef(null);
+  const revisionRef = useRef(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const dirty = JSON.stringify(profile) !== JSON.stringify(saved);
   useDraft(dirty);
@@ -66,8 +67,9 @@ export function Profile({ user }) {
     setLoading(true);
     setError("");
     read(`${API}/profile`, {signal: controller.signal})
-      .then(({ data }) => {
+      .then(({ data, headers }) => {
         if (!active) return;
+        revisionRef.current = headers?.etag || null;
         const normalized = {
           ...EMPTY_PROFILE,
           ...data,
@@ -110,7 +112,8 @@ export function Profile({ user }) {
         height_cm: profile.height_cm === "" ? null : Number(profile.height_cm),
         weight_kg: profile.weight_kg === "" ? null : Number(profile.weight_kg),
       };
-      const { data } = await axios.put(`${API}/profile`, payload);
+      const { data, headers } = await axios.put(`${API}/profile`, payload, {headers: revisionRef.current ? {"If-Match": revisionRef.current} : {}});
+      revisionRef.current = headers?.etag || null;
       const normalized = {
         ...data,
         age: data.age ?? "",

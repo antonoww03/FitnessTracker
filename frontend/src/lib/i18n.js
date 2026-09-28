@@ -1,4 +1,8 @@
 export const dictionary = {
+  "History pages": "Страници на историята",
+  "Previous": "Предишна",
+  "Next": "Следваща",
+  "Page": "Страница",
   "Connection interrupted. Your input is still here. Check History before submitting again if a save may have reached the server.": "Връзката прекъсна. Въведеното остава във формата. Ако си записвал данни, провери Историята, преди да ги изпратиш отново.",
   "The server is temporarily unavailable. Your input is still here. Try again shortly.": "Сървърът временно е недостъпен. Въведеното остава във формата. Опитай отново след малко.",
   "You are offline. Keep this page open to preserve your input.": "Няма интернет връзка. Остави страницата отворена, за да запазиш въведеното.",
@@ -154,6 +158,9 @@ export const dictionary = {
   year: "година",
 };
 export const storage = {
+  remove(key) {
+    try { localStorage.removeItem(key); return true; } catch { return false; }
+  },
   get(key) {
     try {
       return localStorage.getItem(key);

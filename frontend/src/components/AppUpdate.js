@@ -37,11 +37,20 @@ export function AppUpdate() {
       } catch { /* Offline or a failed deployment must not interrupt the app. */ }
       finally { checking = false; }
     }
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" })
-        .then(r => { registration = r; if (active) check(); }).catch(() => {});
+    // Complete offline precaching after initial document loading.
+    let startupTimer;
+    function start() {
+      startupTimer = setTimeout(() => {
+        if (!active) return;
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" })
+            .then(r => { registration = r; if (active) check(); }).catch(() => {});
+        }
+        check();
+      }, 1500);
     }
-    check();
+    if (document.readyState === "complete") start();
+    else window.addEventListener("load", start, { once: true });
     const timer = setInterval(check, 5 * 60 * 1000);
     window.addEventListener("online", check);
     window.addEventListener("focus", check);
@@ -49,6 +58,8 @@ export function AppUpdate() {
     return () => {
       active = false;
       clearInterval(timer);
+      clearTimeout(startupTimer);
+      window.removeEventListener("load", start);
       window.removeEventListener("online", check);
       window.removeEventListener("focus", check);
       document.removeEventListener("visibilitychange", check);

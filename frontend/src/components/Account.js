@@ -224,7 +224,7 @@ export function Account({ children }) {
         await removeBackgroundPush().catch(() => {});
         await axios.post(`${API}/auth/logout`);
         await clearOffline(user.id);
-        storage.set(`fittrack-workout:${user.id}`, "null");
+        storage.remove(`fittrack-workout:${user.id}`);
         setOfflineUser(null);
         setUser(null);
       } catch (e) {

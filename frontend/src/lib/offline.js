@@ -100,7 +100,10 @@ export async function clearOffline(ownerId = user?.id) {
   const previous = ownerId ? { id: ownerId } : null;
   clearing = true;
   failures.clear();
-  if (previous) storage.set(`fittrack-updated:${previous.id}`, "");
+  if (previous) {
+    storage.set(`fittrack-updated:${previous.id}`, "");
+    storage.remove(`offline-enabled:${previous.id}`);
+  }
   try {
     const db = await openDB();
     try {

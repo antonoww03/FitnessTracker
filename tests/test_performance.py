@@ -65,3 +65,19 @@ def test_capacity_failure_in_auth_returns_retryable_status(clients, monkeypatch)
     assert response.status_code == 503
     assert response.headers['retry-after'] == '2'
     assert 'no-store' in response.headers['cache-control']
+
+
+def test_dense_paginated_history_budget(clients):
+    a, _ = clients
+    owner = a.get('/api/auth/me').json()['id']
+    rows = [(owner+':water', f'dense-{i:05d}', DAY, json.dumps({'id':f'dense-{i:05d}','date':DAY,'timestamp':DAY+'T12:00:00+00:00','amount_ml':100})) for i in range(10000)]
+    with server.database() as db:
+        db.executemany('INSERT INTO records(kind,id,date,payload) VALUES (?,?,?,?)', rows)
+    timings = []
+    for offset in (0,100,9900):
+        started = time.perf_counter()
+        response = a.get('/api/history', params={'start':DAY,'end':DAY,'limit':100,'offset':offset})
+        timings.append(time.perf_counter()-started)
+        assert response.status_code == 200 and len(response.json()) == 100
+        assert len(response.content) < 100000
+    assert max(timings) < 2, f'Paginated history exceeded 2s: {timings}'

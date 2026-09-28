@@ -1,0 +1,26 @@
+name: Deployment smoke
+on:
+  deployment_status:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deployment-smoke
+  cancel-in-progress: true
+jobs:
+  smoke:
+    # Configure FITNESS_PRODUCTION_ORIGIN as a repository variable, never trust event URLs.
+    if: vars.FITNESS_PRODUCTION_ORIGIN != '' && (github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Verify production frontend and API
+        env:
+          FITNESS_PRODUCTION_ORIGIN: ${{ vars.FITNESS_PRODUCTION_ORIGIN }}
+        run: python tools/deployment_smoke.py "$FITNESS_PRODUCTION_ORIGIN"

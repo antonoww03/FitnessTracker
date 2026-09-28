@@ -2,7 +2,7 @@ name: FitnessTracker checks
 on:
   pull_request:
   push:
-    branches: [main, fix/full-functional-audit]
+    branches: [main]
 permissions:
   contents: read
 concurrency:
@@ -78,6 +78,8 @@ jobs:
           else:
               raise SystemExit('Application did not start')
           PY
+      - run: python tools/deployment_smoke.py http://127.0.0.1:8000
+      - run: node frontend/tests/initial-load.cjs
       - run: npm run test:e2e --prefix frontend
       - run: node frontend/tests/profile.cjs
       - run: node frontend/tests/updates.cjs
@@ -116,3 +118,19 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r backend/requirements.txt pytest==8.3.5
       - run: python -m pytest tests -q
+      - name: Restore PostgreSQL backup into isolated database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          FITTRACK_RESTORE_TEST_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test_restore?sslmode=disable
+        run: |
+          docker exec "$POSTGRES_CONTAINER" pg_dump -U postgres -d fittrack_test --schema=fittrack --format=custom --no-owner --no-acl -f /tmp/fittrack-drill.dump
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres fittrack_test_restore
+          docker exec "$POSTGRES_CONTAINER" pg_restore -U postgres -d fittrack_test_restore --single-transaction --exit-on-error --no-owner --no-acl /tmp/fittrack-drill.dump
+          python - <<'PY'
+          import os, psycopg
+          from tools.postgres_restore_drill import fingerprint
+          with psycopg.connect(os.environ['FITTRACK_TEST_POSTGRES_URL']) as source, psycopg.connect(os.environ['FITTRACK_RESTORE_TEST_URL']) as target:
+              original, restored = fingerprint(source), fingerprint(target)
+              assert original and original == restored
+              print('PASS: PostgreSQL archive restored with matching table fingerprints')
+          PY

@@ -42,6 +42,8 @@ def client_event(body: ClientDiagnostic):
 
 async def diagnostic_requests(request: Request, call_next):
     request_id = uuid.uuid4().hex
+    started = time.perf_counter()
+    request.state.request_id = request_id
     try:
         response = await call_next(request)
     except DatabaseBusy:
@@ -49,11 +51,13 @@ async def diagnostic_requests(request: Request, call_next):
     except Exception:
         # Do not log exception text/locals: database exceptions can contain values.
         response = JSONResponse({'detail':'Unexpected server error', 'request_id':request_id}, status_code=500)
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     response.headers['X-Request-ID'] = request_id
+    response.headers['Server-Timing'] = f'app;dur={elapsed_ms}'
     if response.status_code >= 500:
         route = getattr(request.scope.get('route'), 'path', 'unknown')
         # Only application-defined API route templates, never the raw request URL.
         route = route if isinstance(route,str) and route.startswith('/api/') else 'unknown'
         logger.error(json.dumps({'event':'server_error','release':RELEASE,'request_id':request_id,
-                                 'route':route,'status':response.status_code}))
+                                 'route':route,'status':response.status_code,'duration_ms':elapsed_ms}))
     return response

@@ -68,5 +68,8 @@ API routes. Configure production credentials outside the repository and never pu
 server secrets in frontend environment variables. Review the checked-in configuration
 for your own domains before deploying. Scheduled reminders require an available backend.
 
+For backup, restore and disaster-recovery procedures, see
+[docs/RECOVERY.md](docs/RECOVERY.md).
+
 See [frontend/README.md](frontend/README.md) for frontend commands and
 [ios/README.md](ios/README.md) for the native companion setup.

@@ -26,7 +26,7 @@ def test_program_plan_goals_isolated(clients):
 def test_health_check_is_public(clients):
     a,_=clients
     a.cookies.clear()
-    assert a.get('/api').json()=={'status':'ok'}
+    assert a.get('/api').json()['status']=='ok'
 
 
 def test_recipe_scale_and_validation(clients):

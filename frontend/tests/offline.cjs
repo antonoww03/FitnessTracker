@@ -172,6 +172,33 @@ const api = w.testing;
   api.axios.defaults.adapter = offline;
   assert.equal((await api.axios.get(historyUrl)).data.length,0);
   await assert.rejects(api.axios.put("/api/entries/water/legacy", {amount_ml:1}), /History online/);
+  // New rows use application-level preconditions before transport, not CDN If-Match.
+  const modern = {...entry,_revision_header:"X-FitTrack-Revision"};
+  api.axios.defaults.adapter = async config => {
+    assert.equal(config.headers["X-FitTrack-Revision"],modern._revision);
+    assert.equal(config.headers["If-Match"],undefined);
+    return {data:{undo_token:"modern"},status:200,headers:{},config};
+  };
+  await api.axios.delete("/api/entries/water/water-row", {offlineEntry:modern});
+  api.axios.defaults.adapter = offline;
+  await api.axios.delete("/api/entries/water/water-row", {offlineEntry:modern});
+  assert.equal((await api.queue())[0].config.headers["X-FitTrack-Revision"],modern._revision);
+  await api.discardQueued((await api.queue())[0].key);
+  // Persist a legacy item, then upgrade only its header after capability discovery.
+  await api.axios.delete("/api/entries/water/water-row", {offlineEntry:entry});
+  const legacyOperation = (await api.queue())[0].config.headers["X-Operation-ID"];
+  let replayed = false;
+  api.axios.defaults.adapter = async config => {
+    if (config.method === "get") return {data:{entry_revision_header:"X-FitTrack-Revision"},status:200,headers:{},config};
+    assert.equal(config.headers["If-Match"],undefined);
+    assert.equal(config.headers["X-FitTrack-Revision"],entry._revision);
+    assert.equal(config.headers["X-Operation-ID"],legacyOperation);
+    replayed = true;
+    return {data:{undo_token:"legacy"},status:200,headers:{},config};
+  };
+  await api.syncOffline();
+  assert(replayed); assert.equal((await api.queue()).length,0);
+  console.log("PASS: proxy-safe revision header, modern queue and legacy replay migration");
   const events=[];
   w.fetch = async (url,options) => {events.push({url,body:JSON.parse(options.body)});return {};};
   api.installDiagnostics();

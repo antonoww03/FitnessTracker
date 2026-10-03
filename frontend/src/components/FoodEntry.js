@@ -250,7 +250,7 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
         <Button
           disabled={busy || !description.trim()}
           onClick={analyze}
-          className="mt-3 w-full bg-[#007AFF]"
+          className="mt-3 w-full bg-macro-protein"
           data-testid="analyze-food-button"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
@@ -330,7 +330,7 @@ export const FoodEntry = ({ selectedDate, onFoodLogged }) => {
           <Button
             onClick={save}
             disabled={busy}
-            className="mt-3 w-full bg-[#007AFF]"
+            className="mt-3 w-full bg-macro-protein"
             data-testid="confirm-food-button"
           >
             {t("Confirm")}

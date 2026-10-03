@@ -73,3 +73,10 @@ For backup, restore and disaster-recovery procedures, see
 
 See [frontend/README.md](frontend/README.md) for frontend commands and
 [ios/README.md](ios/README.md) for the native companion setup.
+
+### Frontend styling and browser support
+
+Tailwind CSS 4 is configured in `frontend/src/index.css` (`@theme`) and compiled
+with `@tailwindcss/postcss`. The old JavaScript Tailwind configuration is no longer used.
+The styling requires Safari 16.4+, Chrome 111+, or Firefox 128+. Browser emulation
+does not replace physical iOS/Android acceptance testing.

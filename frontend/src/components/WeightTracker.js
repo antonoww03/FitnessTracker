@@ -54,14 +54,14 @@ export const WeightTracker = ({ selectedDate, weightKg, onWeightLogged, userId }
           onChange={(e) => setWeight(e.target.value)}
           step="0.1"
           min="0"
-          className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-9 font-body text-sm flex-1"
+          className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-macro-protein h-9 font-body text-sm flex-1"
           data-testid="weight-input"
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
         />
         <Button
           onClick={handleSave}
           disabled={saving || !weight}
-          className="bg-[#007AFF] hover:bg-[#0062CC] text-white h-9 px-4 rounded-md"
+          className="bg-macro-protein hover:bg-[#0062CC] text-white h-9 px-4 rounded-md"
           aria-label={t("Save weight")}
           data-testid="save-weight-button"
         >

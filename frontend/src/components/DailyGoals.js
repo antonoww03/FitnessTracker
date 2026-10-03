@@ -58,7 +58,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated, selected
       <DialogContent className="bg-[#141414] border-[#2A2A2A] text-white max-w-md" data-testid="daily-goals-dialog">
         <DialogHeader>
           <DialogTitle className="font-body text-xl tracking-normal font-bold text-white flex items-center gap-2">
-            <Target className="h-5 w-5 text-[#007AFF]" />{t("Daily Goals")}</DialogTitle>
+            <Target className="h-5 w-5 text-macro-protein" />{t("Daily Goals")}</DialogTitle>
           <DialogDescription className="text-[#A0A0A0] font-body text-sm">{t("Set your daily macro targets")}</DialogDescription>
         </DialogHeader>
 
@@ -78,7 +78,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated, selected
                   setFormGoals({ ...formGoals, [field.key]: e.target.value })
                 }
                 min="0"
-                className="bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-9 font-body text-sm"
+                className="bg-[#0A0A0A] border-[#2A2A2A] text-white focus:ring-1 focus:ring-[#007AFF] focus:border-macro-protein h-9 font-body text-sm"
                 data-testid={`goal-input-${field.key}`}
               />
             </div>
@@ -88,7 +88,7 @@ export const DailyGoals = ({ open, onOpenChange, goals, onGoalsUpdated, selected
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="mt-4 w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md"
+          className="mt-4 w-full bg-macro-protein hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md"
           data-testid="save-goals-button"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{t("Save Goals")}</Button>

@@ -101,7 +101,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[x.strip() for x in os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if x.strip()],
     allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
-    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID', 'X-FitTrack-Owner', 'If-Match'],
+    allow_headers=['Content-Type', 'X-Requested-With', 'X-Operation-ID', 'X-FitTrack-Owner', 'If-Match', 'X-FitTrack-Revision'],
 )
 api_router = APIRouter()
 CURRENT_USER = ContextVar("current_user", default="")
@@ -364,7 +364,7 @@ async def food_by_barcode(barcode: str):
 def health():
     with database() as db:
         db.execute('SELECT 1')
-    return {'status': 'ok'}
+    return {'status': 'ok', 'entry_revision_header': 'X-FitTrack-Revision'}
 
 
 @api_router.post('/food/analyze')
@@ -1100,7 +1100,11 @@ def entry_revision(row):
 def mutate_entry(kind, identifier, request, body=None):
     """Atomic conditional mutation + durable replay response, scoped to session."""
     operation = OPERATION_ID.get()
-    expected = request.headers.get('if-match')
+    # Application preconditions must not be evaluated by a CDN against its response ETag.
+    legacy = request.headers.get('if-match')
+    expected = request.headers.get('x-fittrack-revision') or legacy
+    if legacy and expected != legacy:
+        raise HTTPException(422, 'Conflicting entry revisions')
     if expected and not re.fullmatch(r'[a-f0-9]{64}', expected):
         raise HTTPException(422, 'Invalid entry revision')
     digest = hashlib.sha256(json.dumps([request.method, kind, identifier, body, expected], sort_keys=True).encode()).hexdigest()
@@ -1125,7 +1129,7 @@ def mutate_entry(kind, identifier, request, body=None):
             value.update(id=identifier, timestamp=original['timestamp'], updated_at=datetime.now(timezone.utc).isoformat())
             changed = db.execute('UPDATE records SET payload=? WHERE kind=? AND id=? AND payload=?',
                                  (json.dumps(value),scoped(kind),identifier,row[0])).rowcount
-            result = {**value, '_revision': entry_revision(value)}
+            result = {**value, '_revision': entry_revision(value), '_revision_header': 'X-FitTrack-Revision'}
         else:
             token = str(uuid.uuid4())
             payload = {'id':token,'kind':kind,'entry':original,'expires':time.time()+86400}
@@ -1155,7 +1159,7 @@ def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'wa
         timestamp = "CAST(payload AS jsonb)->>'timestamp'" if storage.postgres_enabled() else "json_extract(payload, '$.timestamp')"
         with database() as db:
             rows = db.execute(f"SELECT kind,payload FROM records WHERE kind IN ({placeholders}) AND date>=? AND date<=? ORDER BY date DESC,COALESCE({timestamp},'') DESC,kind,id LIMIT ? OFFSET ?", [*kinds,str(start),str(end),limit,offset]).fetchall()
-        return [{**(value := json.loads(raw)), 'kind':kinds[k], '_revision':entry_revision(value)} for k,raw in rows]
+        return [{**(value := json.loads(raw)), 'kind':kinds[k], '_revision':entry_revision(value), '_revision_header':'X-FitTrack-Revision'} for k,raw in rows]
     result = []
     with database() as db:
         for k in MODELS:
@@ -1164,7 +1168,7 @@ def history(start: Date, end: Date, kind: Literal['all', 'food', 'training', 'wa
             rows = db.execute('SELECT payload FROM records WHERE kind=? AND date>=? AND date<=? ORDER BY date DESC', (scoped(k), str(start), str(end)))
             for row in rows:
                 value = json.loads(row[0])
-                result.append({**value, 'kind': k, '_revision': entry_revision(value)})
+                result.append({**value, 'kind': k, '_revision': entry_revision(value), '_revision_header': 'X-FitTrack-Revision'})
     return sorted(result, key=lambda r: (r['date'], r.get('timestamp', '')), reverse=True)
 
 

@@ -223,8 +223,17 @@ export async function syncOffline() {
     for (const item of await queue()) {
       if (user?.id !== owner || clearing) break;
       try {
+        const headers = {...item.config.headers};
+        // Migrate only the transport header of a legacy queue item. Keep its revision,
+        // operation ID and payload unchanged, including lost-response replays.
+        if (editable(item.config) && headers["If-Match"] &&
+            await supportsRevisionHeader(item.config.url, owner)) {
+          headers[revisionHeader] = headers["If-Match"];
+          delete headers["If-Match"];
+        }
         const response = await axios.request({
           ...item.config,
+          headers,
           skipOffline: true,
           expectedOwner: owner,
         });
@@ -247,11 +256,19 @@ export async function syncOffline() {
     window.dispatchEvent(new Event("fittrack-synced"));
   }
 }
+const revisionHeader = "X-FitTrack-Revision";
+async function supportsRevisionHeader(url, owner) {
+  const root = new URL(url, location.origin);
+  root.pathname = root.pathname.replace(/\/entries\/.*$/, "");
+  root.search = "";
+  const response = await axios.get(root.href, {skipOffline: true, expectedOwner: owner});
+  return response.data?.entry_revision_header === revisionHeader;
+}
 let installed = false;
 export function installOffline() {
   if (installed) return;
   installed = true;
-  axios.interceptors.request.use((config) => {
+  axios.interceptors.request.use(async (config) => {
     if (config.expectedOwner && config.expectedOwner !== user?.id)
       throw new Error("Account changed; sync stopped");
     config.offlineOwner = user?.id;
@@ -263,8 +280,16 @@ export function installOffline() {
         : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
             b.toString(16).padStart(2, "0"),
           ).join("");
-    if (editable(config) && config.offlineEntry?._revision)
-      config.headers["If-Match"] = config.offlineEntry._revision;
+    if (editable(config) && config.offlineEntry?._revision) {
+      let supported = config.offlineEntry._revision_header === revisionHeader;
+      // Old cached rows retain their original revision; never refresh it to bypass a conflict.
+      if (!supported && navigator.onLine) {
+        try { supported = await supportsRevisionHeader(config.url, config.offlineOwner); } catch {}
+      }
+      config.headers[supported ? revisionHeader : "If-Match"] = config.offlineEntry._revision;
+    }
+    if (config.expectedOwner && config.expectedOwner !== user?.id)
+      throw new Error("Account changed; sync stopped");
     return config;
   });
   axios.interceptors.response.use(
@@ -325,7 +350,7 @@ export function installOffline() {
       )
         return Promise.reject(error);
       if (writable(config)) {
-        if (editable(config) && (!config.headers["If-Match"] || !config.offlineEntry))
+        if (editable(config) && (!(config.headers[revisionHeader] || config.headers["If-Match"]) || !config.offlineEntry))
           return Promise.reject(new Error("Open History online once before editing offline."));
         const id = config.headers["X-Operation-ID"];
         const data =
@@ -336,7 +361,7 @@ export function installOffline() {
           config: {
             url: config.url,
             method: config.method,
-            headers: { "X-Operation-ID": id, "X-FitTrack-Owner": config.offlineOwner, ...(config.headers["If-Match"] ? {"If-Match": config.headers["If-Match"]} : {}) },
+            headers: { "X-Operation-ID": id, "X-FitTrack-Owner": config.offlineOwner, ...(config.headers["If-Match"] ? {"If-Match": config.headers["If-Match"]} : {}), ...(config.headers[revisionHeader] ? {[revisionHeader]: config.headers[revisionHeader]} : {}) },
             data,
           },
           entry: config.offlineEntry,

@@ -33,7 +33,7 @@ def client(tmp_path, monkeypatch):
 
 def test_health_defaults_empty_day(client):
     health = client.get('/api')
-    assert health.json() == {'status': 'ok'}
+    assert health.json()['status'] == 'ok'
     assert health.headers['x-content-type-options'] == 'nosniff'
     assert health.headers['x-frame-options'] == 'DENY'
     data = client.get('/api/summary', params={'date': DAY}).json()

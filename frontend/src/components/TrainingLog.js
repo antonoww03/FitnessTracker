@@ -100,7 +100,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged, userId }) => {
           min="1"
           max="1440"
           step="1"
-          className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-[#007AFF] h-10 font-body text-sm"
+          className="bg-[#0A0A0A] border-[#2A2A2A] text-white placeholder:text-[#555] focus:ring-1 focus:ring-[#007AFF] focus:border-macro-protein h-10 font-body text-sm"
           data-testid="training-duration-input"
         />
 
@@ -109,7 +109,7 @@ export const TrainingLog = ({ selectedDate, onTrainingLogged, userId }) => {
         <Button
           onClick={handleSubmit}
           disabled={saving || !trainingType || !duration}
-          className="w-full bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md transition-all duration-200"
+          className="w-full bg-macro-protein hover:bg-[#0062CC] text-white font-body tracking-normal text-sm font-bold h-10 rounded-md transition-all duration-200"
           data-testid="log-training-button"
         >
           {saving ? (

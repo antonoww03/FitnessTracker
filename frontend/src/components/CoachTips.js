@@ -50,11 +50,11 @@ export const CoachTips = ({ selectedDate }) => {
     <div className="ft-card p-5" data-testid="coach-tips">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-body text-lg tracking-normal font-bold text-white">
-          <MessageCircle className="inline h-4 w-4 text-[#007AFF] mr-1.5 -mt-0.5" />{t("Daily Review")}</h2>
+          <MessageCircle className="inline h-4 w-4 text-macro-protein mr-1.5 -mt-0.5" />{t("Daily Review")}</h2>
         <Button
           onClick={generateTips}
           disabled={loading}
-          className="bg-[#007AFF] hover:bg-[#0062CC] text-white font-body tracking-normal text-xs font-semibold h-8 px-3 rounded-md"
+          className="bg-macro-protein hover:bg-[#0062CC] text-white font-body tracking-normal text-xs font-semibold h-8 px-3 rounded-md"
           data-testid="generate-tips-button"
         >
           {loading ? (
@@ -89,7 +89,7 @@ export const CoachTips = ({ selectedDate }) => {
                 data-testid={`coach-tip-${i}`}
               >
                 <div
-                  className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+                  className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5"
                   style={{ backgroundColor: `${config.color}15` }}
                 >
                   <Icon className="h-3.5 w-3.5" style={{ color: config.color }} />

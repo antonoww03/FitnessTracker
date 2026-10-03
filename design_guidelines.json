@@ -93,7 +93,7 @@
   },
   "instructions_to_main_agent": [
     "Install the required fonts: 'Barlow Condensed' and 'DM Sans' via Google Fonts in index.html or global css.",
-    "Configure tailwind.config.js to include the custom colors and fonts defined here.",
+    "Configure the @theme block in frontend/src/index.css to include the custom colors and fonts defined here.",
     "Implement the Layout Strategy: 'Control Room' Grid with precise column spanning.",
     "MOCK the OpenAI integration for food recognition if no backend is provided. Create a dummy service that simulates a 2-second delay and returns plausible macros based on the user's text. HIGHLIGHT THIS AS MOCKED in the UI or comments.",
     "Build the Custom Circular Progress component using SVG. This is a hard requirement. Do not try to find it in Shadcn as it doesn't exist.",

@@ -29,7 +29,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
   return (
     <header className="ft-header" data-testid="app-header">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-md bg-[#007AFF] flex items-center justify-center">
+        <div className="w-10 h-10 rounded-md bg-macro-protein flex items-center justify-center">
           <Activity className="h-5 w-5 text-white" />
         </div>
         <div>
@@ -82,7 +82,7 @@ export const Header = ({ selectedDate, onDateChange, totalTrainingMinutes }) => 
                 <Button
                   onClick={goToToday}
                   variant="ghost"
-                  className="w-full text-xs text-[#007AFF] hover:bg-[#007AFF]/10 h-8 font-body"
+                  className="w-full text-xs text-macro-protein hover:bg-macro-protein/10 h-8 font-body"
                   data-testid="go-to-today-button"
                 >{t("Go to Today")}</Button>
               </div>

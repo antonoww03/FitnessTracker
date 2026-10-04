@@ -1,0 +1,9 @@
+{
+  "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "ip": "192.0.2.10",
+  "timestamp": "1791072000",
+  "method": "POST",
+  "path": "/api/auth/login",
+  "client": "171b0123cc744aab3c2216e9c316a9c5d528eac092f8bf338f9fa7f93ce799f3",
+  "signature": "11b3bd9c70eccff3ca4d58905fca12821649eaba0c5e7bd3ad763ea2645933fb"
+}

@@ -31,6 +31,7 @@
     "@radix-ui/react-toggle-group": "^1.1.7",
     "@radix-ui/react-tooltip": "^1.2.4",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/functions": "^3.9.11",
     "@zxing/browser": "^0.2.1",
     "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
@@ -54,7 +55,8 @@
   "scripts": {
     "start": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
-    "test": "npm run test:features && npm run test:offline && npm run test:reminders && npm run test:pwa",
+    "test": "npm run test:features && npm run test:offline && npm run test:reminders && npm run test:pwa && npm run test:proxy",
+    "test:proxy": "node --experimental-strip-types --test tests/proxy-identity.mjs",
     "test:e2e": "node tests/functional.cjs",
     "test:features": "node tests/features.cjs",
     "test:offline": "node tests/offline.cjs",

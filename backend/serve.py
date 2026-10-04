@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-import uvicorn
+from backend.proxy_probe import server_for
 from fastapi.staticfiles import StaticFiles
 
 from backend.server import app
@@ -15,4 +15,4 @@ if not (FRONTEND_BUILD / 'index.html').is_file():
 app.mount('/', StaticFiles(directory=FRONTEND_BUILD, html=True), name='frontend')
 
 if __name__ == '__main__':
-    uvicorn.run(app, host=os.getenv('HOST', '127.0.0.1'), port=int(os.getenv('PORT', '8000')))
+    server_for(app, host=os.getenv('HOST', '127.0.0.1'), port=int(os.getenv('PORT', '8000'))).run()

@@ -152,3 +152,11 @@ jobs:
               assert original and original == restored
               print('PASS: PostgreSQL archive restored with matching table fingerprints')
           PY
+      - name: Exercise manual recovery runner using synthetic data only
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          FITTRACK_BACKUP_SOURCE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test?sslmode=disable
+          FITTRACK_RESTORE_TEST_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test_production_restore?sslmode=disable
+        run: |
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres fittrack_test_production_restore
+          python -m tools.production_restore_drill --synthetic

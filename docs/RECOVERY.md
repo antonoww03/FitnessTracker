@@ -51,3 +51,63 @@ Application rollback and database restore are different recovery actions.
 ## Verification ownership
 
 Automated CI must keep the PostgreSQL dump/restore check passing. Production readiness additionally requires a separate end-to-end restore drill using an actual production backup restored into an isolated target, with recovery time and operator decision points recorded. Do not treat CI alone as proof of production backup recoverability.
+
+## Manually approved production archive drill
+
+`Production restore drill` is a `workflow_dispatch` workflow, restricted to `main`.
+It does not run on PRs, pushes or a schedule. It uses a disposable PostgreSQL 17
+service container on a GitHub-hosted runner. Ordinary PR CI exercises the same
+runner with synthetic local data only. Merging the workflow does not run a
+production backup or prove production recoverability.
+
+Before the first production run, a repository administrator must:
+
+1. Create the `production-recovery` GitHub Environment. Configure a required
+   reviewer and restrict deployment branches to **only main**, with no tag rule.
+   A sole maintainer approving their own manual run must leave “prevent self-review”
+   off; a second reviewer is preferable when available. Reviewers must check the
+   selected commit before approving. Do not enable runner/step debug logging.
+2. Add **environment secret** `FITTRACK_BACKUP_SOURCE_URL`. Do not use a repository
+   secret, workflow input, issue comment, or checked-in `.env` file. Prefer a dedicated
+   read-only backup role with access to all application tables and sequences. If
+   an existing owner credential is used for a one-off drill, remove the environment
+   secret afterwards. The script forces read-only source transactions, but that is
+   not a substitute for a database-enforced least-privilege role.
+3. Use a direct or session-pooler connection compatible with concurrent snapshot
+   export/import; transaction pooling is not supported. TLS is required. The URL
+   accepts only host, port, database, user, password and sslmode options. Percent-encode
+   special characters in credentials. Never print the connection URL.
+4. Confirm the source is PostgreSQL 17, the application commit matches the deployed
+   version, no schema migration is running, and the runner can reach the source.
+5. Dispatch from `main` with confirmation `RESTORE-ISOLATED`, then approve the
+   environment job. This grants the runner temporary access to production data.
+
+The runner exports a read-only repeatable-read snapshot, fingerprints every
+application table and dumps the same snapshot. Normal concurrent application
+writes therefore do not invalidate comparison. It holds a source snapshot for up
+to several minutes; abort during unexpected production pressure. It uses bounded
+connection, lock, statement, subprocess and job timeouts. It releases the source
+before restoring or starting application code.
+
+Restore refuses an occupied target or a target other than the explicitly named
+local disposable database. It checks all table contents and constraints before
+application startup/expired-data cleanup. Application smoke checks run in a fresh
+process with only the local URL and with backup/push workers and dotenv loading
+disabled. They read a bounded sample of restored accounts using temporary local
+sessions, and exercise registration/login/logout plus a new record write/read.
+They do not contact a deployed app or send notifications.
+
+Public logs contain pass/fail and duration only, not rows, counts, fingerprints,
+credentials or raw database errors. No archive, database log or application output
+is uploaded as an artifact or cached. The archive is removed on normal success or
+failure; an always-run step removes the database container and its volumes. Forced
+runner termination relies on GitHub-hosted VM disposal, so never switch this
+workflow to a persistent/self-hosted runner without a separate cleanup design.
+
+Record the approved commit, workflow run, backup/restore/smoke timings and result
+in the private operational tracker. A failed run is not recovery evidence. This
+is a private-schema logical recovery drill, not proof of provider PITR, role/ACL,
+Storage-object or full-cluster recovery. It intentionally excludes ownership and
+ACLs; reconcile target permissions and old sessions before any real cutover.
+The temporary archive is destroyed: a durable encrypted offsite backup with its
+own retention policy is still necessary for disaster recovery.

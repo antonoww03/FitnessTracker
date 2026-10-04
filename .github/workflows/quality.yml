@@ -31,6 +31,7 @@ jobs:
       - run: python -m pip install -r backend/requirements-dev.txt
       - run: npm ci --prefix frontend
       - run: python -m pytest tests -q
+      - run: npm run test:proxy --prefix frontend
       - run: npm run test:features --prefix frontend
       - run: npm run test:offline --prefix frontend
       - run: npm run test:reminders --prefix frontend

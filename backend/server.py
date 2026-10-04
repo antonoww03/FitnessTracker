@@ -44,6 +44,8 @@ async def lifespan(application):
     """Own the backup and reminder workers for exactly one app process."""
     from backend.security import validate_auth_mode
     validate_auth_mode()
+    from backend.proxy_identity import configured_key
+    configured_key()
     application.state.backup_task = None
     application.state.push_task = None
     with database():
@@ -702,8 +704,9 @@ def session_user(token):
 
 
 def auth_attempt(request, username):
-    # Persistent limits shared across workers; never trust forwarded IP headers here.
-    keys = [f"ip:{request.client.host if request.client else 'unknown'}", f'user:{username}']
+    from backend.proxy_identity import auth_client_identity
+    # Validate before consuming either persistent budget. Account limiting is independent.
+    keys = [f'ip:{auth_client_identity(request)}', f'user:{username}']
     blocked = False
     with database() as db:
         now = time.time()

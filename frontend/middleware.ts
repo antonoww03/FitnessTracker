@@ -1,5 +1,5 @@
 import { ipAddress, next } from '@vercel/functions';
-import { upstreamHeaders } from './server/proxy-identity.mjs';
+import { upstreamHeaders } from './server/proxy-identity.cjs';
 
 export const config = { runtime: 'nodejs', matcher: '/api/auth/:path*' };
 

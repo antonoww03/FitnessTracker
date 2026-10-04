@@ -1,12 +1,12 @@
 // Server-only. Never import this module from the browser application.
-import { createHmac } from 'node:crypto';
-import { isIP } from 'node:net';
+const { createHmac } = require('node:crypto');
+const { isIP } = require('node:net');
 
-export const identityHeaders = [
+const identityHeaders = [
   'x-fittrack-client', 'x-fittrack-client-time', 'x-fittrack-client-signature',
 ];
 
-export function upstreamHeaders(request, platformIP, secret, now = Date.now()) {
+function upstreamHeaders(request, platformIP, secret, now = Date.now()) {
   const headers = new Headers(request.headers);
   // A caller cannot supply its own identity, including during staged rollout.
   for (const name of identityHeaders) headers.delete(name);
@@ -25,3 +25,5 @@ export function upstreamHeaders(request, platformIP, secret, now = Date.now()) {
   headers.set(identityHeaders[2], signature);
   return headers;
 }
+
+module.exports = { identityHeaders, upstreamHeaders };

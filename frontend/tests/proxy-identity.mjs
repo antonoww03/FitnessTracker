@@ -1,12 +1,45 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { test } from 'node:test';
 import middleware, { config } from '../middleware.ts';
-import { upstreamHeaders, identityHeaders } from '../server/proxy-identity.mjs';
+import { upstreamHeaders, identityHeaders } from '../server/proxy-identity.cjs';
 
 const vector = JSON.parse(readFileSync(new URL('../../tests/fixtures/proxy-identity.json', import.meta.url)));
 const request = headers => new Request(`https://app.example${vector.path}`, { method: 'POST', headers });
 const sign = (req, ip = vector.ip) => upstreamHeaders(req, ip, vector.secret, Number(vector.timestamp) * 1000);
+
+test('Vercel CommonJS artifact loads without requiring an ES module', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const output = mkdtempSync(path.join(root, '.proxy-runtime-'));
+  const require = createRequire(import.meta.url);
+  const old = process.env.FITTRACK_PROXY_IDENTITY_KEY;
+  try {
+    execFileSync(process.execPath, [require.resolve('typescript/bin/tsc'),
+      '--target', 'es2022', '--module', 'commonjs', '--skipLibCheck', '--types', 'node',
+      '--allowJs', '--rootDir', '.', '--outDir', output,
+      'middleware.ts', 'server/proxy-identity.cjs'], { cwd: root, stdio: 'pipe' });
+    const source = readFileSync(path.join(output, 'middleware.js'), 'utf8');
+    assert.match(source, /require\(/); // Exercise the provider's actual module format.
+    // Node 24 permits some require(ESM) forms that the provider runtime rejects.
+    // Reject that dependency structurally as well as invoking the compiled code.
+    assert.doesNotMatch(source, /require\([^)]*\.mjs["']/);
+    const deployed = require(path.join(output, 'middleware.js')).default;
+    delete process.env.FITTRACK_PROXY_IDENTITY_KEY;
+    assert.equal(deployed(request()).headers.get('x-middleware-next'), '1');
+    process.env.FITTRACK_PROXY_IDENTITY_KEY = vector.secret;
+    const response = deployed(request({ 'x-real-ip': vector.ip }));
+    assert.equal(response.headers.get('x-middleware-request-x-fittrack-client'), vector.client);
+    assert.equal(deployed(request()).status, 503);
+  } finally {
+    if (old === undefined) delete process.env.FITTRACK_PROXY_IDENTITY_KEY;
+    else process.env.FITTRACK_PROXY_IDENTITY_KEY = old;
+    rmSync(output, { recursive: true, force: true });
+  }
+});
 
 test('shared Python/Node protocol vector; preserve application headers', () => {
   const headers = sign(request({ cookie: 'synthetic', 'x-requested-with': 'FitTrack' }));

@@ -56,3 +56,54 @@ def test_public_error_does_not_include_credentials(monkeypatch, capsys):
     assert 'secret' not in str(error.value)
     assert 'private database row' not in str(error.value)
     assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize('error, category', [
+    (drill.psycopg.errors.InvalidPassword('secret-source'), 'database_authentication_failed'),
+    (drill.psycopg.errors.InsufficientPrivilege('private row'), 'database_permission_denied'),
+    (drill.psycopg.OperationalError('postgresql://u:secret@private/db'), 'database_connection_or_operation_failed'),
+    (drill.subprocess.CalledProcessError(1, ['private-command'], output=b'private row', stderr=b'secret-source'), 'subprocess_failed'),
+    (drill.subprocess.TimeoutExpired(['private-command'], 10, output=b'secret-source'), 'subprocess_timeout'),
+    (ValueError('secret-source'), 'validation_failed'),
+    (RuntimeError('private row'), 'unexpected_failure'),
+])
+def test_public_failure_categories_are_fixed_labels(error, category, monkeypatch, capsys):
+    monkeypatch.setattr('sys.argv', ['drill'])
+    monkeypatch.setenv('FITTRACK_BACKUP_SOURCE_URL', 'secret-source')
+    monkeypatch.setenv('FITTRACK_RESTORE_TEST_URL', 'secret-target')
+    monkeypatch.setenv('POSTGRES_CONTAINER', 'a'*64)
+    def fail(*args, **kwargs):
+        drill.report_phase('source_connect')
+        raise error
+    monkeypatch.setattr(drill, 'drill', fail)
+    with pytest.raises(SystemExit) as result:
+        drill.main()
+    assert str(result.value) == ('Restore drill FAILED: ' + category
+                               + '. No database details or tool output published.')
+    assert capsys.readouterr().out == '{"phase": "source_connect"}\n'
+
+
+def test_phase_rejects_dynamic_data_without_printing(capsys):
+    with pytest.raises(ValueError):
+        drill.report_phase('private database row')
+    assert capsys.readouterr().out == ''
+
+
+def test_connection_failure_identifies_source_phase(monkeypatch, capsys):
+    class EmptyTarget:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, query): return self
+        def fetchone(self): return None
+    def connect(**options):
+        if options['host'] == '127.0.0.1':
+            return EmptyTarget()
+        raise drill.psycopg.OperationalError('secret-source')
+    monkeypatch.setattr(drill.psycopg, 'connect', connect)
+    with pytest.raises(drill.psycopg.OperationalError):
+        drill.drill('postgresql://u:p@source.example/db',
+                    'postgresql://u:p@127.0.0.1/fittrack_test_production_restore', 'a'*64)
+    assert capsys.readouterr().out.splitlines() == [
+        '{"phase": "configuration"}', '{"phase": "target_check"}',
+        '{"phase": "source_connect"}',
+    ]

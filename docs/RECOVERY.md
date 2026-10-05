@@ -111,3 +111,11 @@ Storage-object or full-cluster recovery. It intentionally excludes ownership and
 ACLs; reconcile target permissions and old sessions before any real cutover.
 The temporary archive is destroyed: a durable encrypted offsite backup with its
 own retention policy is still necessary for disaster recovery.
+
+The manual drill prints fixed phase labels before each operation and a bounded
+failure category on error. The last phase identifies the operation being attempted,
+not a completed backup or restore. Categories do not establish a root cause by
+themselves (for example, a connection/operation failure can have several causes).
+Raw exception text, subprocess output, connection strings and database values
+remain suppressed, including when the drill fails. Do not enable shell tracing or
+publish database logs to investigate a failure in a public repository.

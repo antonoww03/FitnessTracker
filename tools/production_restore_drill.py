@@ -24,6 +24,41 @@ TABLES = {'users', 'sessions', 'recovery', 'records', 'operations', 'attempts',
           'push_deliveries', 'app_settings', 'schema_migrations'}
 
 
+# These public diagnostics are fixed labels, never exception text or DB values.
+PHASES = frozenset({
+    'configuration', 'target_check', 'source_connect', 'source_snapshot',
+    'source_fingerprint', 'archive_dump', 'archive_restore',
+    'restore_verification', 'application_smoke',
+})
+
+
+def report_phase(phase):
+    if phase not in PHASES:
+        raise ValueError('Unknown diagnostic phase')
+    print(json.dumps({'phase': phase}), flush=True)
+
+
+def failure_category(error):
+    # Do not print SQLSTATE, exception names, messages, stderr, URLs or commands.
+    for error_type, label in (
+        (psycopg.errors.InvalidPassword, 'database_authentication_failed'),
+        (psycopg.errors.InsufficientPrivilege, 'database_permission_denied'),
+        (psycopg.errors.QueryCanceled, 'database_query_cancelled'),
+        (psycopg.errors.InvalidParameterValue, 'database_parameter_rejected'),
+        (psycopg.OperationalError, 'database_connection_or_operation_failed'),
+        (psycopg.Error, 'database_error'),
+        (subprocess.TimeoutExpired, 'subprocess_timeout'),
+        (subprocess.CalledProcessError, 'subprocess_failed'),
+        (AssertionError, 'application_assertion_failed'),
+        (ValueError, 'validation_failed'),
+        (KeyError, 'required_configuration_missing'),
+        (OSError, 'system_io_failed'),
+    ):
+        if isinstance(error, error_type):
+            return label
+    return 'unexpected_failure'
+
+
 def connection_options(url, *, local=False):
     parsed = urlsplit(url)
     if parsed.scheme not in ('postgres', 'postgresql') or not parsed.hostname or parsed.fragment:
@@ -105,6 +140,7 @@ def smoke(target):
 
 
 def drill(source_url, target_url, container, *, synthetic=False):
+    report_phase('configuration')
     target = connection_options(target_url, local=True)
     if synthetic:
         source = psycopg.conninfo.conninfo_to_dict(source_url)
@@ -114,6 +150,7 @@ def drill(source_url, target_url, container, *, synthetic=False):
         source = connection_options(source_url)
     if not re.fullmatch(r'[a-f0-9]{64}', container):
         raise ValueError('Expected ephemeral PostgreSQL service container ID')
+    report_phase('target_check')
     # No other application/process may use this disposable database.
     with psycopg.connect(**target) as db:
         if db.execute("SELECT 1 FROM pg_namespace WHERE nspname='fittrack'").fetchone():
@@ -122,12 +159,15 @@ def drill(source_url, target_url, container, *, synthetic=False):
     start = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='fittrack-private-drill-') as directory:
         archive = Path(directory)/'archive.dump'
+        report_phase('source_connect')
         with psycopg.connect(**source, options='-c default_transaction_read_only=on -c statement_timeout=120000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=300000', prepare_threshold=None) as db:
+            report_phase('source_snapshot')
             db.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             if db.info.server_version // 10000 != 17:
                 raise ValueError('This runner requires a PostgreSQL 17 source')
             db.execute("SET LOCAL timezone='UTC'")
             snapshot = db.execute('SELECT pg_export_snapshot()').fetchone()[0]
+            report_phase('source_fingerprint')
             before = fingerprint(db)
             constraints = catalog(db)
             if not all(row[3] for row in constraints):
@@ -145,17 +185,20 @@ def drill(source_url, target_url, container, *, synthetic=False):
             # Docker's loopback is the service container for synthetic CI runs.
             command += [container, 'pg_dump', '--format=custom', '--schema=fittrack',
                         '--no-owner', '--no-acl', '--snapshot='+snapshot]
+            report_phase('archive_dump')
             with archive.open('wb') as output:
                 os.chmod(archive, 0o600)
                 subprocess.run(command, env=env, stdout=output, stderr=subprocess.PIPE, check=True, timeout=180)
             # Release the source snapshot promptly; all subsequent writes are local.
         timings['backup_seconds'] = round(time.monotonic()-start, 2)
         start = time.monotonic()
+        report_phase('archive_restore')
         with archive.open('rb') as data:
             subprocess.run(['docker','exec','-i',container,'pg_restore','-U','postgres',
                             '-d',TARGET_DB,'--single-transaction','--exit-on-error','--no-owner','--no-acl'],
                            stdin=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=180)
         timings['restore_seconds'] = round(time.monotonic()-start, 2)
+        report_phase('restore_verification')
         with psycopg.connect(**target) as db:
             db.execute("SET LOCAL timezone='UTC'")
             if fingerprint(db) != before or catalog(db) != constraints:
@@ -166,6 +209,7 @@ def drill(source_url, target_url, container, *, synthetic=False):
         env.update(DATABASE_URL=target_url, FITTRACK_REQUIRE_POSTGRES='1', FITTRACK_AUTO_BACKUP='0',
                    FITTRACK_PUSH_WORKER='0', FITTRACK_AUTO_VAPID='0', FITTRACK_COOKIE_SECURE='1',
                    PYTHON_DOTENV_DISABLED='1')
+        report_phase('application_smoke')
         subprocess.run([sys.executable,'-m','tools.production_restore_drill','--smoke'], env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=120)
         timings['smoke_seconds'] = round(time.monotonic()-start, 2)
@@ -185,9 +229,10 @@ def main():
             result = drill(os.environ['FITTRACK_BACKUP_SOURCE_URL'], os.environ['FITTRACK_RESTORE_TEST_URL'],
                            os.environ['POSTGRES_CONTAINER'], synthetic=args.synthetic)
             print(json.dumps(result))
-    except Exception:
+    except Exception as error:
         # Neither tracebacks nor subprocess errors are safe on a public runner.
-        raise SystemExit('Restore drill FAILED. No database details or tool output published.') from None
+        raise SystemExit('Restore drill FAILED: ' + failure_category(error)
+                         + '. No database details or tool output published.') from None
 
 
 if __name__ == '__main__':

@@ -37,3 +37,24 @@ def test_vapid_survives_new_connections(monkeypatch):
     first = server.vapid_configuration()
     assert first['private_key']
     assert server.vapid_configuration() == first
+
+
+
+def test_restore_fingerprints_ignore_display_defaults_but_detect_changes():
+    import psycopg
+    from tools.production_restore_drill import fingerprint, catalog
+    with psycopg.connect(os.environ['FITTRACK_TEST_POSTGRES_URL']) as db:
+        db.execute("INSERT INTO fittrack.attempts VALUES ('float-regression',1,1234567890.1234567)")
+        db.execute('SET LOCAL extra_float_digits=0')
+        rounded = db.execute('SELECT row_to_json(t)::text FROM fittrack.attempts t').fetchone()[0]
+        source = fingerprint(db)
+        db.execute('SET LOCAL extra_float_digits=3')
+        precise = db.execute('SELECT row_to_json(t)::text FROM fittrack.attempts t').fetchone()[0]
+        assert rounded != precise  # Old text-hashing method falsely reports corruption.
+        assert fingerprint(db) == source
+        db.execute("UPDATE fittrack.attempts SET until=1234567890.123456 WHERE key='float-regression'")
+        assert fingerprint(db) != source  # Real precision-level changes still fail.
+        db.execute('SET LOCAL search_path=fittrack,public')
+        source_constraints = catalog(db)
+        db.execute('SET LOCAL search_path=public')
+        assert catalog(db) == source_constraints

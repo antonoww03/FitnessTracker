@@ -80,7 +80,18 @@ def connection_options(url, *, local=False):
     return options
 
 
+def comparison_settings(db):
+    # Transaction-local settings: never change provider/role/database defaults.
+    # pg_dump preserves float precision; fingerprints must do the same.
+    db.execute("SET LOCAL extra_float_digits=3")
+    db.execute("SET LOCAL timezone='UTC'")
+    db.execute("SET LOCAL DateStyle='ISO, YMD'")
+    db.execute("SET LOCAL IntervalStyle='postgres'")
+    db.execute("SET LOCAL search_path=pg_catalog")
+
+
 def fingerprint(db):
+    comparison_settings(db)
     names = [r[0] for r in db.execute("SELECT tablename FROM pg_tables WHERE schemaname='fittrack' ORDER BY tablename")]
     if not TABLES <= set(names):
         raise ValueError('Required application tables missing')
@@ -101,10 +112,12 @@ def fingerprint(db):
 
 
 def catalog(db):
+    comparison_settings(db)
     return db.execute("""SELECT c.relname, con.conname, pg_get_constraintdef(con.oid), con.convalidated
         FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid
         JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='fittrack'
-        ORDER BY c.relname, con.conname""").fetchall()
+        ORDER BY c.relname COLLATE "C", con.conname COLLATE "C"
+        """).fetchall()
 
 
 def smoke(target):
@@ -201,7 +214,11 @@ def drill(source_url, target_url, container, *, synthetic=False):
         report_phase('restore_verification')
         with psycopg.connect(**target) as db:
             db.execute("SET LOCAL timezone='UTC'")
-            if fingerprint(db) != before or catalog(db) != constraints:
+            data_match = fingerprint(db) == before
+            constraints_match = catalog(db) == constraints
+            print(json.dumps({'snapshot_data_match': data_match,
+                              'constraints_match': constraints_match}), flush=True)
+            if not data_match or not constraints_match:
                 raise ValueError('Restored data or constraints differ from snapshot')
         start = time.monotonic()
         # Allowlist avoids leaking the production URL, provider keys, or worker flags.

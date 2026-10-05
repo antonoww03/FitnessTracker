@@ -119,3 +119,9 @@ themselves (for example, a connection/operation failure can have several causes)
 Raw exception text, subprocess output, connection strings and database values
 remain suppressed, including when the drill fails. Do not enable shell tracing or
 publish database logs to investigate a failure in a public repository.
+
+Fingerprint and constraint comparisons use transaction-local, deterministic display
+settings on both connections, including full-precision float output and a fixed
+schema search path. Provider defaults remain unchanged. Matching data is checked
+without rounding away differences. The runner reports separate aggregate booleans
+for data and constraint equality; either mismatch still fails the drill.

@@ -158,5 +158,8 @@ jobs:
           FITTRACK_BACKUP_SOURCE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test?sslmode=disable
           FITTRACK_RESTORE_TEST_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/fittrack_test_production_restore?sslmode=disable
         run: |
+          # Reproduce different source/target float-output defaults with synthetic data.
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d fittrack_test -v ON_ERROR_STOP=1 -c "UPDATE fittrack.attempts SET until=1234567890.1234567"
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d fittrack_test -v ON_ERROR_STOP=1 -c "ALTER DATABASE fittrack_test SET extra_float_digits=0"
           docker exec "$POSTGRES_CONTAINER" createdb -U postgres fittrack_test_production_restore
           python -m tools.production_restore_drill --synthetic

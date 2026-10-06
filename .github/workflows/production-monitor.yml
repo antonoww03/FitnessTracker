@@ -1,0 +1,39 @@
+name: Production monitor
+on:
+  schedule:
+    # Four short probe windows per day; never a keep-alive loop.
+    - cron: '17 */6 * * *'
+    # Provider log reads do not wake the application.
+    - cron: '47 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only check or synthetic notification drill
+        type: choice
+        options: [health, errors, test-alert, test-recovery]
+        default: health
+permissions:
+  contents: read
+concurrency:
+  group: production-monitor-${{ github.event.schedule || inputs.mode }}
+  cancel-in-progress: false
+jobs:
+  monitor:
+    if: github.ref == 'refs/heads/main' && vars.FITTRACK_MONITOR_ENABLED == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Evaluate bounded production signals
+        env:
+          MONITOR_MODE: ${{ inputs.mode || (github.event.schedule == '17 */6 * * *' && 'health' || 'errors') }}
+          FITNESS_PRODUCTION_ORIGIN: ${{ vars.FITNESS_PRODUCTION_ORIGIN }}
+          RENDER_WORKSPACE_ID: ${{ vars.FITTRACK_RENDER_WORKSPACE_ID }}
+          RENDER_SERVICE_ID: ${{ vars.FITTRACK_RENDER_SERVICE_ID }}
+          RENDER_MONITOR_API_KEY: ${{ secrets.RENDER_MONITOR_API_KEY }}
+        run: python tools/production_monitor.py "$MONITOR_MODE"

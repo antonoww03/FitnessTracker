@@ -180,10 +180,8 @@ def connect(sqlite_path):
             connection.close()
         return
     # Never silently fall back to disposable SQLite on a remote DB failure.
-    options = psycopg.conninfo.conninfo_to_dict(url)
-    options.setdefault('sslmode', 'require')
-    options['connect_timeout'] = 10
-    with postgres_slot(), psycopg.connect(**options, prepare_threshold=None) as connection:
+    from backend import pg_pool
+    with postgres_slot(), pg_pool.connection(url) as connection:
         connection.execute("SET LOCAL statement_timeout = '15s'")
         connection.execute("SET LOCAL lock_timeout = '5s'")
         if url not in _initialized:

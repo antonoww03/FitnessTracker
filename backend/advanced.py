@@ -227,7 +227,6 @@ class AccountDeletion(RecoveryRequest):
 
 
 def verify_password(body, request, db):
-    s.auth_attempt(request, s.CURRENT_USER.get())
     row=db.execute('SELECT username,salt,password FROM users WHERE id=?',(s.CURRENT_USER.get(),)).fetchone()
     if not row or not secrets.compare_digest(s.password_hash(body.password,row[1]),row[2]):
         raise HTTPException(403,'Incorrect password')
@@ -236,6 +235,7 @@ def verify_password(body, request, db):
 
 @router.post('/auth/change-password')
 def change_password(body: PasswordChange, request: Request, response: Response):
+    s.auth_attempt(request, s.CURRENT_USER.get())
     with s.database() as db:
         verify_password(body,request,db)
         salt=secrets.token_hex(16)
@@ -249,6 +249,7 @@ def change_password(body: PasswordChange, request: Request, response: Response):
 
 @router.post('/auth/logout-all')
 def logout_all(body: RecoveryRequest,request: Request,response: Response):
+    s.auth_attempt(request, s.CURRENT_USER.get())
     with s.database() as db:
         verify_password(body,request,db)
         subscriptions=db.execute('SELECT id FROM records WHERE kind=?',(s.scoped('push_subscription'),)).fetchall()
@@ -261,6 +262,7 @@ def logout_all(body: RecoveryRequest,request: Request,response: Response):
 
 @router.delete('/auth/account')
 def delete_account(body: AccountDeletion,request: Request,response: Response):
+    s.auth_attempt(request, s.CURRENT_USER.get())
     owner=s.CURRENT_USER.get()
     with s.database() as db:
         account=verify_password(body,request,db)

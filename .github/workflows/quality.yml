@@ -119,6 +119,8 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r backend/requirements-dev.txt
       - run: python -m pytest tests -q
+      - name: Measure pooled and fresh mixed workloads
+        run: python -m pytest tests/test_pg_pool.py -k mixed_workload_comparison -q -s
       - name: Restore PostgreSQL backup into isolated database
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

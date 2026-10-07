@@ -1,6 +1,5 @@
 """Real PostgreSQL pool guarantees; only the disposable test database is allowed."""
 import os
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -109,7 +108,9 @@ def test_mixed_workload_comparison(monkeypatch):
     import json
     import statistics
     from uuid import uuid4
-    from pathlib import Path
+    from datetime import date
+    from threading import BoundedSemaphore
+    slots = BoundedSemaphore(4)
     url = os.environ['FITTRACK_TEST_POSTGRES_URL']
     pg_pool.close()
     pg_pool.start()
@@ -121,7 +122,7 @@ def test_mixed_workload_comparison(monkeypatch):
     def fresh(target):
         options = psycopg.conninfo.conninfo_to_dict(target)
         options.setdefault('sslmode', 'require')
-        with psycopg.connect(**options, connect_timeout=10, prepare_threshold=None) as db:
+        with slots, psycopg.connect(**options, connect_timeout=10, prepare_threshold=None) as db:
             yield db
     pooled = pg_pool.connection
     def run(factory):
@@ -134,8 +135,10 @@ def test_mixed_workload_comparison(monkeypatch):
                     server.save('water', {'id':str(uuid4()),'date':'2026-10-01','amount_ml':250})
                 elif i % 4 == 1:
                     assert server.backup().status_code == 200
+                elif i % 4 == 2:
+                    assert len(server.history(date(2026,10,1),date(2026,10,1),limit=50)) == 50
                 else:
-                    assert len(server.records('water', '2026-10-01')) >= 1000
+                    assert server.summary(date(2026,10,1))['total_water_ml'] >= 250000
                 return (time.perf_counter()-started)*1000
             finally:
                 server.CURRENT_USER.reset(token)
@@ -143,7 +146,13 @@ def test_mixed_workload_comparison(monkeypatch):
         with ThreadPoolExecutor(max_workers=8) as workers:
             timings = list(workers.map(operation,range(64)))
         return {'median_ms':round(statistics.median(timings),2),'p95_ms':round(sorted(timings)[60],2),'total_ms':round((time.perf_counter()-started)*1000,2)}
-    result = {'fresh':run(fresh),'pooled':run(pooled),'stats':pg_pool.stats()}
+    rounds = []
+    for i in range(3):
+        modes = [('fresh',fresh),('pooled',pooled)]
+        if i % 2:
+            modes.reverse()
+        rounds.append({name:run(factory) for name,factory in modes})
+    result = {'rounds':rounds,'stats':pg_pool.stats()}
     assert result['stats']['pool_size'] <= 4
     assert result['stats'].get('requests_errors',0) == 0
     # Compare measured values; don't impose a noisy shared-runner speedup ratio.

@@ -2,12 +2,22 @@
 from contextlib import contextmanager
 import threading
 import pytest
-from backend import storage
+from backend import storage, pg_pool
 from tests.test_features import clients
 
 
+@pytest.fixture
+def single_connection(clients, monkeypatch):
+    pg_pool.close()
+    pg_pool.start()
+    monkeypatch.setenv('FITTRACK_DB_MAX_CONNECTIONS', '1')
+    yield
+    pg_pool.close()
+    pg_pool.start()
+
+
 @pytest.mark.parametrize('action', ['change-password', 'logout-all', 'account'])
-def test_account_actions_do_not_nest_checkouts(clients, monkeypatch, action):
+def test_account_actions_do_not_nest_checkouts(clients, single_connection, monkeypatch, action):
     client, _ = clients
     username = client.get('/api/auth/me').json()['username']
     original = storage.connect

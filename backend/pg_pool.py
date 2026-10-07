@@ -91,6 +91,10 @@ def close():
         _stopped = True
         pool, _pool, _key = _pool, None, None
     if pool is not None:
+        values = pool.get_stats()
+        logger.info('db_pool event=shutdown connections=%d lost=%d bad_returns=%d checkout_errors=%d',
+                    values.get('connections_num',0), values.get('connections_lost',0),
+                    values.get('returns_bad',0), values.get('requests_errors',0))
         pool.close(timeout=5)
 
 

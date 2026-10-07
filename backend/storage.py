@@ -22,24 +22,12 @@ SCHEMA = (
 INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg.IntegrityError)
 _initialized = set()
 _init_lock = threading.Lock()
-# Per process cap, including callers waiting for PostgreSQL connection startup.
-_pg_slots = threading.BoundedSemaphore(int(os.getenv('FITTRACK_DB_MAX_CONNECTIONS', '4')))
 _cleanup_lock = threading.Lock()
 _last_cleanup = {}
 
 
 class DatabaseBusy(Exception):
     pass
-
-
-@contextmanager
-def postgres_slot():
-    if not _pg_slots.acquire(timeout=2):
-        raise DatabaseBusy('Database capacity temporarily exhausted')
-    try:
-        yield
-    finally:
-        _pg_slots.release()
 
 
 def cleanup(connection, key, postgres=False):
@@ -181,7 +169,7 @@ def connect(sqlite_path):
         return
     # Never silently fall back to disposable SQLite on a remote DB failure.
     from backend import pg_pool
-    with postgres_slot(), pg_pool.connection(url) as connection:
+    with pg_pool.connection(url) as connection:
         connection.execute("SET LOCAL statement_timeout = '15s'")
         connection.execute("SET LOCAL lock_timeout = '5s'")
         if url not in _initialized:

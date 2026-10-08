@@ -8,24 +8,15 @@ from tests.test_features import clients
 def test_known_email_schema_preserves_accounts_and_registration(clients):
     a, _ = clients
     with server.database() as db:
-        db.execute('ALTER TABLE users ADD COLUMN email TEXT')
-        db.execute('CREATE UNIQUE INDEX users_email_unique ON users(email)')
-        db.execute("UPDATE users SET email='alice@example.com' WHERE username='alice'")
-        db.execute('INSERT INTO schema_migrations VALUES (2)')
-    try:
-        with server.database() as db:
-            storage.migrate(db, postgres=storage.postgres_enabled())
-        assert a.post('/api/auth/login', json={'username':'alice','password':'a-unique-password-123'}).status_code == 200
-        response = a.post('/api/auth/register', json={'username':'charlie','password':'a-unique-password-123'})
-        assert response.status_code == 200
-        with server.database() as db:
-            assert db.execute("SELECT email FROM users WHERE username='alice'").fetchone()[0] == 'alice@example.com'
-            assert db.execute("SELECT email FROM users WHERE username='charlie'").fetchone()[0] is None
-    finally:
-        with server.database() as db:
-            db.execute('DELETE FROM schema_migrations WHERE version=2')
-            db.execute('DROP INDEX users_email_unique')
-            db.execute('ALTER TABLE users DROP COLUMN email')
+        storage.migrate(db, postgres=storage.postgres_enabled())
+        assert db.execute('SELECT version FROM schema_migrations ORDER BY version').fetchall() == [(1,), (2,)]
+        # The bridge uses named columns and can still create legacy NULL-email accounts.
+        salt = secrets.token_hex(16)
+        db.execute('INSERT INTO users (id,username,salt,password) VALUES (?,?,?,?)',
+                   ('legacy','legacy',salt,server.password_hash('lowercase-legacy-password',salt)))
+    assert a.post('/api/auth/login',json={'username':'legacy','password':'lowercase-legacy-password'}).status_code == 200
+    with server.database() as db:
+        assert db.execute("SELECT email FROM users WHERE username='legacy'").fetchone()[0] is None
 
 
 @pytest.mark.parametrize('action', ['recovery-code','logout-all','change-password','account'])
@@ -49,7 +40,7 @@ def test_existing_short_password_can_authorize_account_actions(clients, action):
     assert response.status_code == 200
 
 
-def test_bridge_does_not_change_password_creation_policy(clients):
+def test_legacy_registration_requires_refresh_and_reset_policy_is_unchanged(clients):
     a, _ = clients
     assert a.post('/api/auth/register',json={'username':'short','password':'Abcdef12'}).status_code == 422
-    assert a.post('/api/auth/change-password',json={'password':'a-unique-password-123','new_password':'Abcdef12'}).status_code == 422
+    assert a.post('/api/auth/change-password',json={'password':'A-unique-password-123','new_password':'Abcdef12'}).status_code == 422

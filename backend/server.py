@@ -379,7 +379,7 @@ async def food_by_barcode(barcode: str):
 def health():
     with database() as db:
         db.execute('SELECT 1')
-    return {'status': 'ok', 'entry_revision_header': 'X-FitTrack-Revision'}
+    return {'status': 'ok', 'entry_revision_header': 'X-FitTrack-Revision', 'email_registration': True}
 
 
 @api_router.post('/food/analyze')
@@ -649,6 +649,11 @@ class Credentials(Model):
     password: str = Field(min_length=12, max_length=128)
 
 
+class Registration(Credentials):
+    password: str = Field(min_length=1, max_length=128)
+    email: str | None = Field(default=None, max_length=254)
+
+
 class LoginCredentials(Credentials):
     # Credential verification must accept already-stored passwords regardless
     # of the policy that was in force when they were created.
@@ -748,16 +753,32 @@ def start_session(user_id, username, response):
 
 
 @api_router.post('/auth/register')
-def register(body: Credentials, request: Request, response: Response):
+def register(body: Registration, request: Request, response: Response):
     username = body.username.lower()
     auth_attempt(request, username)
+    from backend.account_validation import normalize_email, valid_new_password
+    if body.email is None:
+        raise HTTPException(422, 'Email is required. Refresh the page to update the registration form.')
+    try:
+        email = normalize_email(body.email)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    if not valid_new_password(body.password):
+        raise HTTPException(422, 'Use at least 8 characters and one uppercase letter.')
     salt, user_id = secrets.token_hex(16), str(uuid.uuid4())
     hashed = password_hash(body.password, salt)
     try:
         with database() as db:
-            db.execute('INSERT INTO users (id,username,salt,password) VALUES (?,?,?,?)', (user_id, username, salt, hashed))
+            db.execute('INSERT INTO users (id,username,salt,password,email) VALUES (?,?,?,?,?)', (user_id, username, salt, hashed, email))
     except storage.INTEGRITY_ERRORS:
-        raise HTTPException(409, 'Username is unavailable') from None
+        # Inspect in a fresh transaction: PostgreSQL aborts the failed INSERT.
+        with database() as db:
+            username_exists = db.execute('SELECT 1 FROM users WHERE username=?', (username,)).fetchone()
+            email_exists = db.execute('SELECT 1 FROM users WHERE email=?', (email,)).fetchone()
+        detail = ('This username is already taken.' if username_exists else
+                  'An account with this email already exists.' if email_exists else
+                  'Account registration conflicted. Try again.')
+        raise HTTPException(409, detail) from None
     from backend.advanced import issue_recovery
     return {**start_session(user_id, username, response), "recovery_code": issue_recovery(user_id)}
 

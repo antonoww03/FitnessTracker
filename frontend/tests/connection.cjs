@@ -6,7 +6,7 @@ if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Di
  const browser = await chromium.launch({headless:true});
  try {
   const context = await browser.newContext({viewport:{width:320,height:844}});
-  assert((await context.request.post(base+'/api/auth/register', {headers:{'X-Requested-With':'FitTrack'},data:{username:'connection-'+Date.now(),password:'connection-test-password-123'}})).ok());
+  assert((await context.request.post(base+'/api/auth/register', {headers:{'X-Requested-With':'FitTrack'},data:{email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username:'connection-'+Date.now(),password:'Connection-test-password-123'}})).ok());
   const page = await context.newPage();
   let failBoot = true;
   await page.route('**/api/auth/me', route => failBoot ? route.fulfill({status:503,contentType:'application/json',body:'{}'}) : route.continue());

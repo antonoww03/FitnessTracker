@@ -51,7 +51,7 @@ def test_future_schema_fails_closed(tmp_path, monkeypatch):
         with storage.connect(path):
             pass
     with sqlite3.connect(path) as db:
-        assert db.execute('SELECT version FROM schema_migrations ORDER BY version').fetchall() == [(1,), (999,)]
+        assert db.execute('SELECT version FROM schema_migrations ORDER BY version').fetchall() == [(1,), (2,), (999,)]
 
 
 def test_api_timing_and_request_id(clients):
@@ -96,7 +96,7 @@ def test_delete_account_removes_owned_technical_records(clients):
     with server.database() as db:
         db.execute('INSERT INTO attempts VALUES (?,1,9999999999)',('diagnostics:'+owner,))
         db.execute('INSERT INTO attempts VALUES (?,1,9999999999)',('resource:'+owner+':export',))
-    assert a.request('DELETE','/api/auth/account',json={'password':'a-unique-password-123','confirm_username':'alice'}).status_code == 200
+    assert a.request('DELETE','/api/auth/account',json={'password':'A-unique-password-123','confirm_username':'alice'}).status_code == 200
     with server.database() as db:
         for table, column in [('records','owner_id'),('operations','owner'),('sessions','user_id'),('recovery','user_id')]:
             assert db.execute(f'SELECT count(*) FROM {table} WHERE {column}=?',(owner,)).fetchone()[0]==0

@@ -16,7 +16,7 @@ if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Di
       assert.equal((await pending).status(),401); // Reaches credential check, not policy validation.
       const username = 'bridge-'+width+'-'+Date.now();
       assert((await context.request.post(base+'/api/auth/register', {
-        headers:{'X-Requested-With':'FitTrack'},data:{username,password:'bridge-test-password-123'},
+        headers:{'X-Requested-With':'FitTrack'},data:{email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username,password:'Bridge-test-password-123'},
       })).ok());
       await page.reload();
       await page.getByTestId('tool-settings').click();

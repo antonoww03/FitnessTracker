@@ -22,7 +22,7 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   page.on("dialog", (d) => d.accept());
   page.setDefaultTimeout(15000);
   const today = new Date().toISOString().slice(0, 10),
-    password = "mobile-test-password-123";
+    password = "Mobile-test-password-123";
   fs.mkdirSync(path.join(__dirname, "../test-artifacts"), { recursive: true });
   async function fits() {
     assert(
@@ -35,7 +35,7 @@ if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   try {
     const registered = await context.request.post(base + "/api/auth/register", {
       headers: { "X-Requested-With": "FitTrack" },
-      data: { username: "mobile-" + Date.now(), password },
+      data: {email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com', username: "mobile-" + Date.now(), password },
     });
     assert(registered.ok());
     await page.goto(base);

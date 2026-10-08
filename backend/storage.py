@@ -68,6 +68,7 @@ def migrate(connection, postgres=False):
         # Fail closed if the known extension is not actually present.
         connection.execute('SELECT email FROM users LIMIT 0')
     if 1 in versions:
+        migrate_email(connection, versions)
         return
     # Existing orphaned credentials indicate corruption: roll back and require
     # explicit repair rather than silently deleting data during a deployment.
@@ -112,6 +113,17 @@ def migrate(connection, postgres=False):
     ):
         connection.execute(statement)
     connection.execute('INSERT INTO schema_migrations VALUES (1)')
+    migrate_email(connection, versions)
+
+
+def migrate_email(connection, versions):
+    if 2 in versions:
+        return
+    # Runs under the existing startup transaction and migration lock. Existing
+    # accounts remain NULL; no email is inferred, and NULLs do not collide.
+    connection.execute("ALTER TABLE users ADD COLUMN email TEXT CHECK (email IS NULL OR (email=lower(trim(email)) AND length(email) BETWEEN 3 AND 254))")
+    connection.execute('CREATE UNIQUE INDEX users_email_unique ON users(email)')
+    connection.execute('INSERT INTO schema_migrations VALUES (2)')
 
 
 def postgres_enabled():

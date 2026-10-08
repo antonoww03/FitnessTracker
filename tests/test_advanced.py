@@ -58,7 +58,7 @@ def test_completed_sets_records_and_measurements(clients):
 def test_recovery_consumed_revokes_sessions(clients):
     a,b=clients
     assert a.post('/api/auth/recovery-code',json={'password':'wrong-password-123'}).status_code==403
-    code=a.post('/api/auth/recovery-code',json={'password':'a-unique-password-123'}).json()['recovery_code']
+    code=a.post('/api/auth/recovery-code',json={'password':'A-unique-password-123'}).json()['recovery_code']
     assert b.post('/api/auth/reset-password',json={'username':'bob','password':'new-password-for-alice','recovery_code':code}).status_code==400
     assert b.post('/api/auth/reset-password',json={'username':'alice','password':'new-password-for-alice','recovery_code':code}).status_code==200
     assert a.get('/api/auth/me').status_code==401
@@ -95,9 +95,9 @@ def test_password_change_and_all_sessions(clients):
     a,b=clients
     other_token=a.cookies.get('fittrack_session')
     assert a.post('/api/auth/change-password',json={'password':'wrong-password-123','new_password':'a-new-password-123'}).status_code==403
-    assert a.post('/api/auth/change-password',json={'password':'a-unique-password-123','new_password':'a-new-password-123'}).status_code==200
+    assert a.post('/api/auth/change-password',json={'password':'A-unique-password-123','new_password':'a-new-password-123'}).status_code==200
     assert a.get('/api/auth/me').status_code==401
-    assert a.post('/api/auth/login',json={'username':'alice','password':'a-unique-password-123'}).status_code==401
+    assert a.post('/api/auth/login',json={'username':'alice','password':'A-unique-password-123'}).status_code==401
     assert a.post('/api/auth/login',json={'username':'alice','password':'a-new-password-123'}).status_code==200
     assert a.post('/api/auth/logout-all',json={'password':'a-new-password-123'}).status_code==200
     assert a.get('/api/auth/me').status_code==401
@@ -109,8 +109,8 @@ def test_account_deletion_scoped_and_confirmed(clients):
     alice=a.get('/api/auth/me').json()['id']
     a.post('/api/food',json=FOOD,headers={'X-Operation-ID':'account-delete-op-123'})
     b.post('/api/food',json=FOOD)
-    assert a.request('DELETE','/api/auth/account',json={'password':'a-unique-password-123','confirm_username':'bob'}).status_code==422
-    assert a.request('DELETE','/api/auth/account',json={'password':'a-unique-password-123','confirm_username':'alice'}).status_code==200
+    assert a.request('DELETE','/api/auth/account',json={'password':'A-unique-password-123','confirm_username':'bob'}).status_code==422
+    assert a.request('DELETE','/api/auth/account',json={'password':'A-unique-password-123','confirm_username':'alice'}).status_code==200
     assert a.get('/api/auth/me').status_code==401
     assert len(b.get('/api/food?date='+DAY).json())==1
     with server.database() as db:
@@ -207,8 +207,8 @@ def test_push_subscription_validation_isolation_and_due_claim(clients, monkeypat
 
 def test_password_spaces_are_significant(clients):
     a,b=clients
-    spaced='  a-unique-password-123  '
-    assert a.post('/api/auth/change-password',json={'password':'a-unique-password-123','new_password':spaced}).status_code==200
+    spaced='  A-unique-password-123  '
+    assert a.post('/api/auth/change-password',json={'password':'A-unique-password-123','new_password':spaced}).status_code==200
     assert a.post('/api/auth/login',json={'username':'alice','password':spaced.strip()}).status_code==401
     assert a.post('/api/auth/login',json={'username':'alice','password':spaced}).status_code==200
     assert a.post('/api/auth/recovery-code',json={'password':spaced}).status_code==200

@@ -142,8 +142,8 @@ def smoke(target):
             with psycopg.connect(target) as db:
                 db.execute('DELETE FROM fittrack.sessions WHERE token=%s', (server.session_hash(token),))
             client.cookies.clear()
-        credentials = {'username': 'drill_'+secrets.token_hex(8), 'password': secrets.token_urlsafe(24)}
-        assert client.post('/api/auth/register', json=credentials).status_code == 200
+        credentials = {'username': 'drill_'+secrets.token_hex(8), 'password': 'A'+secrets.token_urlsafe(24)}
+        assert client.post('/api/auth/register', json={**credentials, 'email': credentials['username']+'@example.com'}).status_code == 200
         assert client.post('/api/water', json={'date': '2026-01-01', 'amount_ml': 250}).status_code == 200
         assert client.get('/api/water?date=2026-01-01').json()[0]['amount_ml'] == 250
         assert client.post('/api/auth/logout').status_code == 200

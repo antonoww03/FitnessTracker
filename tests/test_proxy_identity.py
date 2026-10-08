@@ -102,7 +102,7 @@ def test_account_budget_independent_of_client_and_persistent(clients, monkeypatc
 def test_unsigned_auth_cannot_consume_budget_or_create_account(clients, monkeypatch):
     a, _ = clients
     monkeypatch.setenv('FITTRACK_PROXY_IDENTITY_KEY', KEY)
-    response = a.post('/api/auth/register', json={'username': 'unsigned', 'password': 'a-unique-password-123'},
+    response = a.post('/api/auth/register', json={'username': 'unsigned', 'password': 'A-unique-password-123'},
                       headers={'x-forwarded-for': '192.0.2.9'})
     assert response.status_code == 403
     assert 'no-store' in response.headers['cache-control']
@@ -115,7 +115,7 @@ def test_unsigned_auth_cannot_consume_budget_or_create_account(clients, monkeypa
 def test_signed_auth_session_recovery_and_deletion(clients, monkeypatch):
     a, _ = clients
     monkeypatch.setenv('FITTRACK_PROXY_IDENTITY_KEY', KEY)
-    password = 'a-unique-password-123'
+    password = 'A-unique-password-123'
     def post(path, body): return a.post(path, json=body, headers=signed(path))
     assert post('/api/auth/login', {'username': 'alice', 'password': password}).status_code == 200
     code = post('/api/auth/recovery-code', {'password': password})

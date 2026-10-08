@@ -10,7 +10,7 @@ if(!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Dis
    const page=await context.newPage();
    const day=new Date().toISOString().slice(0,10);
    const headers={'X-Requested-With':'FitTrack'};
-   assert((await context.request.post(base+'/api/auth/register',{headers,data:{username:'delete-'+width+'-'+Date.now(),password:'history-delete-password-123'}})).ok());
+   assert((await context.request.post(base+'/api/auth/register',{headers,data:{email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username:'delete-'+width+'-'+Date.now(),password:'History-delete-password-123'}})).ok());
    const entries={
     food:{food_name:'Rice',food_description:'Rice',grams:100,calories:130,protein:3,fat:1,carbs:28,sugar:0,fiber:1},
     water:{amount_ml:251},weight:{weight_kg:74},training:{training_type:'Strength',duration_minutes:45,exercises:[]}
@@ -56,7 +56,7 @@ if(!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Dis
   const page=await context.newPage();
   const day=new Date().toISOString().slice(0,10);
   const headers={'X-Requested-With':'FitTrack'};
-  assert((await context.request.post(base+'/api/auth/register',{headers,data:{username:'edits-'+Date.now(),password:'offline-edit-password-123'}})).ok());
+  assert((await context.request.post(base+'/api/auth/register',{headers,data:{email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username:'edits-'+Date.now(),password:'Offline-edit-password-123'}})).ok());
   assert((await context.request.post(base+'/api/water',{headers,data:{date:day,amount_ml:250}})).ok());
   await page.goto(base);
   await page.getByTestId('tool-settings').click();

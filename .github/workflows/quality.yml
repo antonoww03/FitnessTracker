@@ -105,6 +105,28 @@ jobs:
               raise SystemExit('Isolated application did not start')
           PYREADY
           node frontend/tests/auth-compatibility.cjs
+      - name: Check email registration in isolated application
+        env:
+          FITTRACK_COOKIE_SECURE: '0'
+          FITTRACK_DB_PATH: /tmp/fittrack-registration.sqlite3
+          FITTRACK_E2E_URL: http://127.0.0.1:18002
+          PORT: '18002'
+        run: |
+          python -m backend.serve > /tmp/fittrack-registration.log 2>&1 &
+          auth_test_pid=$!
+          trap 'kill "$auth_test_pid"' EXIT
+          python - <<'PYREADY'
+          import time, urllib.request
+          for attempt in range(30):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:18002/api', timeout=2)
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit('Isolated application did not start')
+          PYREADY
+          node frontend/tests/registration.cjs
       - run: node frontend/tests/updates.cjs
       - run: node frontend/tests/offline-edits.cjs
       - run: node frontend/tests/connection.cjs
@@ -155,7 +177,7 @@ jobs:
           local_options(url)
           with psycopg.connect(url) as db:
               db.execute('SET LOCAL search_path TO fittrack')
-              db.execute("INSERT INTO users VALUES ('restore-drill','restore-drill','synthetic-salt','synthetic-hash')")
+              db.execute("INSERT INTO users (id,username,salt,password) VALUES ('restore-drill','restore-drill','synthetic-salt','synthetic-hash')")
               for kind, payload in [('water', {'date':'2026-09-28','amount_ml':250}), ('profile', {'first_name':'Synthetic','last_name':'Restore'})]:
                   db.execute('INSERT INTO records(kind,id,date,payload) VALUES (%s,%s,%s,%s)', ('restore-drill:'+kind,'drill',payload.get('date',''),json.dumps(payload)))
               db.execute("INSERT INTO sessions VALUES ('drill-session','restore-drill',9999999999)")

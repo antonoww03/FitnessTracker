@@ -41,6 +41,6 @@ def test_account_actions_do_not_nest_checkouts(clients, single_connection, monke
     response = client.request('DELETE' if action == 'account' else 'POST', '/api/auth/'+action, json=payload)
     assert response.status_code == 403
 
-    payload['password'] = 'a-unique-password-123'
+    payload['password'] = 'A-unique-password-123'
     response = client.request('DELETE' if action == 'account' else 'POST', '/api/auth/'+action, json=payload)
     assert response.status_code == 200

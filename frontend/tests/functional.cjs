@@ -19,7 +19,7 @@ if (!['127.0.0.1', 'localhost'].includes(new URL(baseURL).hostname)) throw new E
   };
   const saveResponse = (path, method = 'POST') => page.waitForResponse(response => new URL(response.url()).pathname === `/api/${path}` && response.request().method() === method && response.ok());
   try {
-    const account = await page.request.post(`${baseURL}/api/auth/register`, {headers: {'X-Requested-With':'FitTrack'}, data: {username:`e2e-${Date.now()}`,password:`test-only-${Date.now()}-unique`} });
+    const account = await page.request.post(`${baseURL}/api/auth/register`, {headers: {'X-Requested-With':'FitTrack'}, data: {email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username:`e2e-${Date.now()}`,password:`Test-only-${Date.now()}-unique`} });
     assert.equal(account.status(),200,'Registration must work; local HTTP requires FITTRACK_COOKIE_SECURE=0');
     await page.context().setExtraHTTPHeaders({'X-Requested-With':'FitTrack'});
     await page.goto(baseURL);

@@ -17,7 +17,7 @@ def clients(tmp_path,monkeypatch):
     with TestClient(server.app,base_url='https://testserver') as a, TestClient(server.app,base_url='https://testserver') as b:
         for c,name in [(a,'alice'),(b,'bob')]:
             c.headers['X-Requested-With']='FitTrack'
-            r=c.post('/api/auth/register',json={'username':name,'password':'a-unique-password-123'})
+            r=c.post('/api/auth/register',json={'email':name+'@example.com','username':name,'password':'A-unique-password-123'})
             assert r.status_code==200
             assert 'HttpOnly' in r.headers['set-cookie'] and 'Secure' in r.headers['set-cookie']
         yield a,b
@@ -37,7 +37,7 @@ def test_auth_isolation_and_csrf(clients):
     assert a.post('/api/auth/logout').status_code==200
     assert a.get(f'/api/summary?date={DAY}').status_code==401
     assert a.post('/api/auth/login',json={'username':'alice','password':'wrong-password-123'}).status_code==401
-    assert a.post('/api/auth/login',json={'username':'alice','password':'a-unique-password-123'}).status_code==200
+    assert a.post('/api/auth/login',json={'username':'alice','password':'A-unique-password-123'}).status_code==200
     assert a.get(f'/api/food?date={DAY}').json()[0]['id']==row['id']
 
 

@@ -26,7 +26,7 @@ def test_stale_tab_cannot_read_write_or_logout_another_account(clients):
 
 def test_concurrent_recovery_code_has_exactly_one_winner(clients):
     a, b = clients
-    code = a.post('/api/auth/recovery-code', json={'password': 'a-unique-password-123'}).json()['recovery_code']
+    code = a.post('/api/auth/recovery-code', json={'password': 'A-unique-password-123'}).json()['recovery_code']
     def reset(i):
         return b.post('/api/auth/reset-password', json={
             'username': 'alice', 'password': f'new-concurrent-password-{i}', 'recovery_code': code,
@@ -52,7 +52,7 @@ def test_duplicate_trash_and_undo_are_atomic(clients):
 
 def test_credential_foreign_keys_and_migration_version(clients):
     with server.database() as db:
-        assert db.execute('SELECT version FROM schema_migrations').fetchall() == [(1,)]
+        assert db.execute('SELECT version FROM schema_migrations').fetchall() == [(1,), (2,)]
     for statement, values in [
         ('INSERT INTO sessions VALUES (?,?,?)', ('orphan-token', 'missing-user', 9999999999)),
         ('INSERT INTO recovery VALUES (?,?)', ('missing-user', 'orphan-code')),
@@ -69,14 +69,14 @@ def test_legacy_sqlite_migration_preserves_credentials(tmp_path, monkeypatch):
     with sqlite3.connect(path) as db:
         for statement in storage.SCHEMA:
             db.execute(statement)
-        db.execute("INSERT INTO users VALUES ('owner','legacy','salt','hash')")
+        db.execute("INSERT INTO users (id,username,salt,password) VALUES ('owner','legacy','salt','hash')")
         db.execute("INSERT INTO sessions VALUES ('token','owner',9999999999)")
         db.execute("INSERT INTO recovery VALUES ('owner','code')")
     for _ in range(2):
         with storage.connect(path) as db:
             assert db.execute('SELECT * FROM sessions').fetchall() == [('token', 'owner', 9999999999)]
             assert db.execute('SELECT * FROM recovery').fetchall() == [('owner', 'code')]
-            assert db.execute('SELECT version FROM schema_migrations').fetchall() == [(1,)]
+            assert db.execute('SELECT version FROM schema_migrations').fetchall() == [(1,), (2,)]
     with storage.connect(path) as db:
         db.execute("DELETE FROM users WHERE id='owner'")
     with storage.connect(path) as db:
@@ -88,7 +88,7 @@ def test_deleted_owner_cannot_be_recreated_by_inflight_write(clients):
     a, _ = clients
     owner = a.get('/api/auth/me').json()['id']
     assert a.request('DELETE', '/api/auth/account', json={
-        'password': 'a-unique-password-123', 'confirm_username': 'alice',
+        'password': 'A-unique-password-123', 'confirm_username': 'alice',
     }).status_code == 200
     marker = server.CURRENT_USER.set(owner)
     try:

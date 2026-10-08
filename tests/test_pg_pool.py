@@ -115,7 +115,7 @@ def test_mixed_workload_comparison(monkeypatch):
     pg_pool.close()
     pg_pool.start()
     with server.database() as db:
-        db.execute("INSERT INTO users VALUES ('pool-load','pool-load','salt','hash')")
+        db.execute("INSERT INTO users (id,username,salt,password) VALUES ('pool-load','pool-load','salt','hash')")
         rows = [('pool-load:water',str(i),'2026-10-01',json.dumps({'id':str(i),'date':'2026-10-01','amount_ml':250})) for i in range(1000)]
         db.executemany('INSERT INTO records(kind,id,date,payload) VALUES (?,?,?,?)',rows)
     @contextmanager

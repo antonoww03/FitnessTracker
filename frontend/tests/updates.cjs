@@ -8,7 +8,7 @@ if (!['127.0.0.1','localhost'].includes(new URL(base).hostname)) throw new Error
     const context = await browser.newContext({serviceWorkers:'block'});
     const page = await context.newPage();
     const response = await context.request.post(base+'/api/auth/register', {
-      headers:{'X-Requested-With':'FitTrack'}, data:{username:'updates-'+Date.now(),password:'test-update-password-123'},
+      headers:{'X-Requested-With':'FitTrack'}, data:{email:'test-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'@example.com',username:'updates-'+Date.now(),password:'Test-update-password-123'},
     });
     assert(response.ok());
     const user = await response.json();

@@ -58,8 +58,15 @@ def migrate(connection, postgres=False):
     """Forward-only, transactional migration; never discard legacy user data."""
     connection.execute('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)')
     versions = {row[0] for row in connection.execute('SELECT version FROM schema_migrations').fetchall()}
-    if versions - {1}:
+    # Version 2 is reserved for the additive nullable users.email column.
+    # This bridge release does not apply it, but remains a rollback target.
+    if versions - {1, 2}:
         raise RuntimeError('Database schema is newer than this application; deploy a compatible version')
+    if 2 in versions:
+        if 1 not in versions:
+            raise RuntimeError('Database schema migration history is incomplete')
+        # Fail closed if the known extension is not actually present.
+        connection.execute('SELECT email FROM users LIMIT 0')
     if 1 in versions:
         return
     # Existing orphaned credentials indicate corruption: roll back and require

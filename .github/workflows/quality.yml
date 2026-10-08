@@ -83,6 +83,7 @@ jobs:
       - run: node frontend/tests/initial-load.cjs
       - run: npm run test:e2e --prefix frontend
       - run: node frontend/tests/profile.cjs
+      - run: node frontend/tests/auth-compatibility.cjs
       - run: node frontend/tests/updates.cjs
       - run: node frontend/tests/offline-edits.cjs
       - run: node frontend/tests/connection.cjs

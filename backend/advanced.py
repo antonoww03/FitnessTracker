@@ -65,7 +65,7 @@ class RecipeLog(s.Dated):
     portions: float = Field(ge=0.01,le=1000)
 
 class RecoveryRequest(s.Model):
-    password: str = Field(min_length=12,max_length=128)
+    password: str = Field(min_length=1,max_length=128)
     model_config = s.ConfigDict(extra='forbid', str_strip_whitespace=False)
 
 class ResetPassword(s.Model):

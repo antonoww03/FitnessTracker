@@ -105,6 +105,13 @@ export function Account({ children }) {
     setBusy(true);
     setError("");
     try {
+      if (mode === "register") {
+        const capability = await axios.get(API, { headers: { "Cache-Control": "no-cache" } });
+        if (capability.data.email_registration !== true) {
+          setError(t("Registration is being updated. Your input is saved here. Try again shortly."));
+          return;
+        }
+      }
       if (mode === "reset") {
         await axios.post(`${API}/auth/reset-password`, body);
         setMode("login");

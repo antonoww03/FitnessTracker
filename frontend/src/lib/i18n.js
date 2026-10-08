@@ -1,4 +1,5 @@
 export const dictionary = {
+  "Registration is being updated. Your input is saved here. Try again shortly.": "Регистрацията се обновява. Въведеното остава тук. Опитай отново след малко.",
   "Email": "Имейл",
   "Confirm password": "Потвърди паролата",
   "Show password": "Покажи паролата",

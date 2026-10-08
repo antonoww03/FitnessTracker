@@ -29,9 +29,19 @@ if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Di
   await password.evaluate(e=>e.dispatchEvent(new KeyboardEvent('keydown',{key:'A',modifierCapsLock:true,bubbles:true})));
   await page.getByText('Caps Lock is on.',{exact:true}).waitFor();
   await confirm.focus();assert.equal(await page.getByText('Caps Lock is on.',{exact:true}).count(),0);
-  let writes=0, release;
+  // A newer frontend must not submit to a backend rolled back to the bridge.
+  await page.route('**/api',route=>route.fulfill({status:200,contentType:'application/json',body:'{"status":"ok"}'}));
+  let prematureWrites=0;
+  await page.route('**/api/auth/register',route=>{prematureWrites++;return route.abort();});
+  await confirm.press('Enter');
+  await page.getByText('Registration is being updated. Your input is saved here. Try again shortly.',{exact:true}).waitFor();
+  assert.equal(prematureWrites,0);
+  await page.unroute('**/api');await page.unroute('**/api/auth/register');
+  let writes=0, release, seenResolve;
+  const seen=new Promise(resolve=>{seenResolve=resolve;});
   await page.route('**/api/auth/register',async route=>{
    writes++;
+   seenResolve();
    const body=route.request().postDataJSON();
    assert.equal(body.confirm_password,undefined);assert.equal(body.email,body.email.toLowerCase());
    if(writes===1) {await new Promise(resolve=>{release=resolve});await route.fulfill({status:503,contentType:'application/json',body:'{}'});}
@@ -40,7 +50,7 @@ if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Di
   await confirm.press('Enter');
   await page.waitForFunction(()=>document.querySelector('form')?.getAttribute('aria-busy')==='true');
   await page.locator('form').evaluate(form=>{form.requestSubmit();form.requestSubmit();});
-  assert.equal(writes,1);release();
+  await seen;assert.equal(writes,1);release();
   await page.getByRole('button',{name:'Retry',exact:true}).waitFor();
   assert.equal(await password.inputValue(),'Abcdef12');assert.equal(await confirm.inputValue(),'Abcdef12');
   await page.getByRole('button',{name:'Retry',exact:true}).click();

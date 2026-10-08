@@ -379,7 +379,7 @@ async def food_by_barcode(barcode: str):
 def health():
     with database() as db:
         db.execute('SELECT 1')
-    return {'status': 'ok', 'entry_revision_header': 'X-FitTrack-Revision'}
+    return {'status': 'ok', 'entry_revision_header': 'X-FitTrack-Revision', 'email_registration': True}
 
 
 @api_router.post('/food/analyze')

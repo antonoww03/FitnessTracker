@@ -51,9 +51,9 @@ if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw Error('Di
   await page.waitForFunction(()=>document.querySelector('form')?.getAttribute('aria-busy')==='true');
   await page.locator('form').evaluate(form=>{form.requestSubmit();form.requestSubmit();});
   await seen;assert.equal(writes,1);release();
-  await page.getByRole('button',{name:'Retry',exact:true}).waitFor();
+  await page.locator('form').getByRole('button',{name:'Retry',exact:true}).waitFor();
   assert.equal(await password.inputValue(),'Abcdef12');assert.equal(await confirm.inputValue(),'Abcdef12');
-  await page.getByRole('button',{name:'Retry',exact:true}).click();
+  await page.locator('form').getByRole('button',{name:'Retry',exact:true}).click();
   await page.getByRole('button',{name:'I saved my code',exact:true}).click();
   await page.getByTestId('tool-settings').waitFor();
   assert.equal(writes,2);

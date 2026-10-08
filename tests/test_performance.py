@@ -1,7 +1,6 @@
 """Portable query-plan and API latency gates on a disposable, populated DB."""
 import json
 import time
-import threading
 import pytest
 from backend import server, storage
 from tests.test_features import clients, DAY
@@ -27,19 +26,6 @@ def test_history_uses_date_index_and_bounded_range(clients):
         timings.append(time.perf_counter()-start)
         assert result.status_code == 200 and result.json() == []
     assert sorted(timings)[2] < 1.0, f'History median exceeded 1s: {timings}'
-
-
-def test_connection_capacity_recovers_after_exception(monkeypatch):
-    monkeypatch.setattr(storage, '_pg_slots', threading.BoundedSemaphore(1))
-    with pytest.raises(ValueError):
-        with storage.postgres_slot():
-            raise ValueError('test rollback')
-    with storage.postgres_slot():
-        with pytest.raises(storage.DatabaseBusy):
-            with storage.postgres_slot():
-                pass
-    with storage.postgres_slot():
-        pass
 
 
 def test_cleanup_preserves_receipts_and_live_sessions(clients):

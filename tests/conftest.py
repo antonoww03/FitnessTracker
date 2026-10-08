@@ -2,7 +2,7 @@
 import os
 from urllib.parse import urlparse
 import pytest
-from backend import storage, server
+from backend import storage, server, pg_pool
 
 @pytest.fixture(autouse=True)
 def database_backend(monkeypatch):
@@ -14,6 +14,15 @@ def database_backend(monkeypatch):
     parsed = urlparse(url)
     if parsed.hostname not in ('localhost', '127.0.0.1') or parsed.path != '/fittrack_test':
         raise RuntimeError('Tests require a disposable local fittrack_test database')
+    pg_pool.start()
     monkeypatch.setenv('DATABASE_URL', url)
     with server.database() as db:
         db.execute('TRUNCATE records, users, sessions, attempts, operations, push_deliveries, recovery, app_settings RESTART IDENTITY')
+
+
+@pytest.fixture(scope="session", autouse=True)
+def close_pool_before_test_logging_stops():
+    # Pytest closes captured streams before atexit callbacks run.
+    # Exercise normal shutdown while logging is still available.
+    yield
+    pg_pool.close()

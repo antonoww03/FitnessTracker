@@ -40,7 +40,7 @@ DEFAULT_GOALS = dict(zip(MACROS, (2000, 150, 65, 250, 50, 30)))
 
 
 @asynccontextmanager
-async def lifespan(application):
+async def worker_lifespan(application):
     """Own the backup and reminder workers for exactly one app process."""
     from backend.security import validate_auth_mode
     validate_auth_mode()
@@ -87,6 +87,19 @@ async def lifespan(application):
                     await task
                 except asyncio.CancelledError:
                     pass
+
+
+@asynccontextmanager
+async def lifespan(application):
+    from backend import pg_pool
+    pg_pool.start()
+    try:
+        if storage.postgres_enabled():
+            await asyncio.to_thread(pg_pool.warmup, os.environ['DATABASE_URL'].strip())
+        async with worker_lifespan(application):
+            yield
+    finally:
+        await asyncio.to_thread(pg_pool.close)
 
 
 app = FastAPI(title='FitTrack API', lifespan=lifespan)

@@ -18,3 +18,11 @@ def database_backend(monkeypatch):
     monkeypatch.setenv('DATABASE_URL', url)
     with server.database() as db:
         db.execute('TRUNCATE records, users, sessions, attempts, operations, push_deliveries, recovery, app_settings RESTART IDENTITY')
+
+
+@pytest.fixture(scope="session", autouse=True)
+def close_pool_before_test_logging_stops():
+    # Pytest closes captured streams before atexit callbacks run.
+    # Exercise normal shutdown while logging is still available.
+    yield
+    pg_pool.close()

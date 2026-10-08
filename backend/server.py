@@ -649,6 +649,12 @@ class Credentials(Model):
     password: str = Field(min_length=12, max_length=128)
 
 
+class LoginCredentials(Credentials):
+    # Credential verification must accept already-stored passwords regardless
+    # of the policy that was in force when they were created.
+    password: str = Field(min_length=1, max_length=128)
+
+
 def password_hash(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=2**15, r=8, p=1, maxmem=64*1024*1024).hex()
 
@@ -749,7 +755,7 @@ def register(body: Credentials, request: Request, response: Response):
     hashed = password_hash(body.password, salt)
     try:
         with database() as db:
-            db.execute('INSERT INTO users VALUES (?,?,?,?)', (user_id, username, salt, hashed))
+            db.execute('INSERT INTO users (id,username,salt,password) VALUES (?,?,?,?)', (user_id, username, salt, hashed))
     except storage.INTEGRITY_ERRORS:
         raise HTTPException(409, 'Username is unavailable') from None
     from backend.advanced import issue_recovery
@@ -757,7 +763,7 @@ def register(body: Credentials, request: Request, response: Response):
 
 
 @api_router.post('/auth/login')
-def login(body: Credentials, request: Request, response: Response):
+def login(body: LoginCredentials, request: Request, response: Response):
     username = body.username.lower()
     auth_attempt(request, username)
     with database() as db:

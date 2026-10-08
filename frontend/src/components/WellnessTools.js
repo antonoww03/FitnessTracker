@@ -652,7 +652,7 @@ export function RecoverySettings() {
       </label>
       <button
         className="ft-secondary"
-        disabled={busy || password.length < 12}
+        disabled={busy || password.length < 1}
         onClick={async () => {
           setBusy(true);
           try {

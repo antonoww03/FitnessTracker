@@ -435,10 +435,6 @@ export function AccountSecurity({ user, onSignedOut }) {
   async function action(kind) {
     if (busy) return;
     if (kind === "account" && (!deleteConfirmed || !deletePassword || confirm !== user.username)) return;
-    if (kind === "account" && deletePassword.length < 12) {
-      setError(t("Current password must contain at least 12 characters."));
-      return;
-    }
     if (
       kind !== "account" &&
       !window.confirm(
@@ -501,14 +497,14 @@ export function AccountSecurity({ user, onSignedOut }) {
       <div className="ft-row">
         <button
           className="ft-secondary"
-          disabled={busy || password.length < 12 || next.length < 12}
+          disabled={busy || password.length < 1 || next.length < 12}
           onClick={() => action("change-password")}
         >
           {t("Change password")}
         </button>
         <button
           className="ft-secondary"
-          disabled={busy || password.length < 12}
+          disabled={busy || password.length < 1}
           onClick={() => action("logout-all")}
         >
           {t("Sign out all devices")}

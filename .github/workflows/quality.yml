@@ -83,6 +83,28 @@ jobs:
       - run: node frontend/tests/initial-load.cjs
       - run: npm run test:e2e --prefix frontend
       - run: node frontend/tests/profile.cjs
+      - name: Check account compatibility in isolated application
+        env:
+          FITTRACK_COOKIE_SECURE: '0'
+          FITTRACK_DB_PATH: /tmp/fittrack-auth-compat.sqlite3
+          FITTRACK_E2E_URL: http://127.0.0.1:18001
+          PORT: '18001'
+        run: |
+          python -m backend.serve > /tmp/fittrack-auth-compat.log 2>&1 &
+          auth_test_pid=$!
+          trap 'kill "$auth_test_pid"' EXIT
+          python - <<'PYREADY'
+          import time, urllib.request
+          for attempt in range(30):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:18001/api', timeout=2)
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit('Isolated application did not start')
+          PYREADY
+          node frontend/tests/auth-compatibility.cjs
       - run: node frontend/tests/updates.cjs
       - run: node frontend/tests/offline-edits.cjs
       - run: node frontend/tests/connection.cjs

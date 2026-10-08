@@ -163,13 +163,13 @@ export function Account({ children }) {
               autoComplete={
                 mode === "login" ? "current-password" : "new-password"
               }
-              minLength="12"
+              minLength={mode === "login" ? 1 : 12}
               maxLength="128"
             />
           </label>
-          <p className="ft-muted">
+          {mode !== "login" && <p className="ft-muted">
             {t("Use a unique password of at least 12 characters.")}
-          </p>
+          </p>}
           {error && <p role="alert">{error}</p>}
           <button className="ft-primary" disabled={busy}>
             {t(
